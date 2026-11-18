@@ -47,7 +47,7 @@ Every capture is immediately written to the macOS **pasteboard**, ready to paste
 
 - 🔢 **Dynamic Window Numbering**: Indexes visible windows from front to back `[ 1 ]`, `[ 2 ]`, `[ 3 ]`, `[ 4 ]`, `[ 5 ]...`.
 - 🏷️ **On-Screen Badge Overlays**: Say `"show numbers"` or press `Cmd + Shift + N` to flash floating badge overlays on the top-left of each window.
-- ⚡ **Rapid Shorthand Voice Triggers**: Supports `"snap1"`, `"snap2"`, `"snap3"`, `"snap4"`, `"snap5"` (as well as `"screenshot 1"`, `"window 1"`).
+- ⚡ **Rapid Shorthand Voice Triggers**: Say “snap one,” “snap two,” or any window number through ten. The Live Monitor lists these commands as `snap1` through `snap10`.
 - 📋 **Zero-Click Clipboard Copying**: Every capture is placed on `NSPasteboard` automatically (both bitmap image and file URL).
 - 🖼️ **CleanShot-Style Floating Preview**: A floating thumbnail card appears in the bottom-right corner with 1-click pills:
   - `📋 Copy`: Re-copy to clipboard
@@ -95,7 +95,7 @@ Say **"show numbers"** or **"show window numbers"** (or press `Cmd + Shift + N`)
 | **`"snap1"`** / **`"screenshot 1"`** | Captures Window #1 | Active frontmost window |
 | **`"snap2"`** / **`"screenshot 2"`** | Captures Window #2 | Window directly behind #1 |
 | **`"snap3"`** / **`"screenshot 3"`** | Captures Window #3 | Third visible window |
-| **`"snap4"`**, **`"snap5"`**... | Captures Window #4, #5, etc. | Subsequent windows (up to 10) |
+| **`"snap4"`** through **`"snap10"`** | Captures the window with that number | Subsequent visible windows |
 | **`"show numbers"`** / **`"show windows"`** | Flashes visual number badges on screen | All open windows |
 | **`"screenshot Safari"`** *(or Chrome, Slack, etc.)* | Captures that application's front window | Named Application |
 | **`"display 1"`** / **`"screen 1"`** | Captures full primary display | Display 1 |
@@ -105,7 +105,7 @@ Say **"show numbers"** or **"show window numbers"** (or press `Cmd + Shift + N`)
 | **`"screenshot in 3 seconds"`** | Waits for 3-second countdown before capture | All Displays |
 | **`"take screenshot"`** / **`"screenshot"`** | Full-screen capture across all monitors | All Displays |
 
-*(Number words like `"snap one"`, `"snap two"`, or `"screenshot one"`, `"screenshot two"` are also recognized.)*
+Say “snap one” for `snap1`, “snap two” for `snap2`, and so on. If a window number is unavailable, say “show numbers” to see the current assignments.
 
 ---
 
@@ -128,6 +128,8 @@ To install VoiceShot into your macOS Applications folder so it appears in Spotli
 cd /Users/kaphley/.gemini/antigravity/scratch/voiceshot
 ./install.sh
 ```
+
+The install and launch scripts rebuild the local app when its sources are newer than the executable.
 
 ---
 
@@ -213,7 +215,7 @@ voiceshot/
 ### Key Technical Implementations
 
 1. **Continuous Non-Stop Speech Pipeline (`SpeechRecognizer.swift`)**:
-   Unlike simple recognition wrappers that teardown and restart CoreAudio upon hearing a word (which drops audio buffers and causes CoreAudio race conditions), VoiceShot runs `AVAudioEngine` continuously and tracks an incremental offset (`processedLength`). This allows you to say `"snap1"`, `"snap2"`, `"snap3"` back-to-back with zero audio latency and no jams.
+   VoiceShot keeps `AVAudioEngine` running and tracks which words it has already handled in each recognition session. It treats `snap1`, `snap 1`, and `snap one` as the same command, and lets the trailing phrase settle before acting so the window number or countdown can come through.
 
 2. **On-Device Machine Vision OCR (`ScreenshotManager.swift`)**:
    Uses Apple's `VNRecognizeTextRequest` (`recognitionLevel = .accurate`, `usesLanguageCorrection = true`) to perform fast, 100% on-device text transcription directly from captured pixels.
@@ -236,7 +238,7 @@ cd /Users/kaphley/.gemini/antigravity/scratch/voiceshot
 
 ### Running Automated Test Suite
 
-VoiceShot includes a 28-case automated test suite verifying window discovery, shorthand parser matching, and continuous multi-capture streaming:
+The automated suite checks window discovery, shorthand parsing, and the transcript processor used by live recognition. Run it in a macOS desktop session with at least one eligible window open.
 
 ```bash
 cd /Users/kaphley/.gemini/antigravity/scratch/voiceshot

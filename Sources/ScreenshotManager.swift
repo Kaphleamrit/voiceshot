@@ -31,6 +31,7 @@ final class ScreenshotManager {
     static let shared = ScreenshotManager()
     
     private let speechSynthesizer = AVSpeechSynthesizer()
+    private let captureQueue = DispatchQueue(label: "com.voiceshot.captureQueue", qos: .userInitiated)
     
     private init() {
         requestNotificationPermission()
@@ -145,12 +146,10 @@ final class ScreenshotManager {
                     targetLabel = " - Window \(windowIndex) (\(win.appName))"
                     targetDetail = "Window \(windowIndex) (\(win.appName))"
                     arguments.append(contentsOf: ["-l", "\(win.id)"])
-                } else if let fallbackWin = WindowManager.shared.window(forNumber: 1) {
-                    targetLabel = " - Window 1 (\(fallbackWin.appName))"
-                    targetDetail = "Window 1 (\(fallbackWin.appName))"
-                    arguments.append(contentsOf: ["-l", "\(fallbackWin.id)"])
                 } else {
-                    targetLabel = " - Window \(windowIndex)"
+                    let message = "Window \(windowIndex) is no longer available. Say “show numbers” to see the current windows."
+                    completion(.failure(NSError(domain: "VoiceShot", code: 1, userInfo: [NSLocalizedDescriptionKey: message])))
+                    return
                 }
             case .app(let appName):
                 if let win = WindowManager.shared.window(forApp: appName) {
@@ -229,11 +228,11 @@ final class ScreenshotManager {
         }
         
         if captureDelay > 0.05 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + captureDelay) {
+            captureQueue.asyncAfter(deadline: .now() + captureDelay) {
                 performCapture()
             }
         } else {
-            DispatchQueue.global(qos: .userInitiated).async {
+            captureQueue.async {
                 performCapture()
             }
         }

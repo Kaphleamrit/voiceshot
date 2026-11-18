@@ -10,8 +10,7 @@ app.setActivationPolicy(.accessory)
 // Check CLI arguments
 if CommandLine.arguments.contains("--monitor") || CommandLine.arguments.contains("-m") {
     DispatchQueue.main.async {
-        MonitorWindowController.shared.showWindow(nil)
-        app.activate(ignoringOtherApps: true)
+        delegate.showMonitorWindow()
     }
 }
 

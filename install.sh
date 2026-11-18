@@ -4,10 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_PATH="$SCRIPT_DIR/VoiceShot.app"
 
-if [ ! -d "$APP_PATH" ]; then
-    echo "Building VoiceShot.app first..."
-    "$SCRIPT_DIR/build.sh"
-fi
+"$SCRIPT_DIR/build.sh" --if-needed
 
 DEST_DIR="$HOME/Applications"
 mkdir -p "$DEST_DIR"

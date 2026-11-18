@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboardMenuItem: NSMenuItem!
     private var previewMenuItem: NSMenuItem!
     private var spokenMenuItem: NSMenuItem!
+    private weak var monitor: MonitorWindowController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -128,7 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         speech.onTriggerDetected = { [weak self] target, delay, trigger in
             self?.flashMenuBarIcon()
+            self?.monitor?.showDetectedCommand(target: target, delay: delay, trigger: trigger)
             ScreenshotManager.shared.captureScreenshot(target: target, delay: delay > 0 ? delay : nil) { result in
+                DispatchQueue.main.async {
+                    self?.monitor?.showCaptureResult(result, target: target)
+                }
                 switch result {
                 case .success(let path):
                     print("[VoiceShot] \(target.description) handled: \(path)")
@@ -140,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         speech.onStatusChanged = { [weak self] state in
             self?.updateMenuState(state)
+            self?.monitor?.handleSpeechState(state)
         }
     }
     
@@ -227,29 +233,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let prefs = PreferencesManager.shared
         prefs.copyToClipboard.toggle()
         clipboardMenuItem.state = prefs.copyToClipboard ? .on : .off
-        MonitorWindowController.shared.refreshSettingsValues()
+        monitor?.refreshSettingsValues()
     }
     
     @objc private func togglePreview() {
         let prefs = PreferencesManager.shared
         prefs.showFloatingPreview.toggle()
         previewMenuItem.state = prefs.showFloatingPreview ? .on : .off
-        MonitorWindowController.shared.refreshSettingsValues()
+        monitor?.refreshSettingsValues()
     }
     
     @objc private func toggleSpoken() {
         let prefs = PreferencesManager.shared
         prefs.spokenFeedback.toggle()
         spokenMenuItem.state = prefs.spokenFeedback ? .on : .off
-        MonitorWindowController.shared.refreshSettingsValues()
+        monitor?.refreshSettingsValues()
     }
     
     @objc private func openFolder() {
         ScreenshotManager.shared.openScreenshotsFolder()
     }
     
-    @objc private func showMonitorWindow() {
+    @objc func showMonitorWindow() {
         let controller = MonitorWindowController.shared
+        monitor = controller
+        controller.handleSpeechState(SpeechRecognizer.shared.currentState)
         controller.refreshSettingsValues()
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)

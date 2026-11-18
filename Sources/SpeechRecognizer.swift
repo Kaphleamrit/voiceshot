@@ -35,8 +35,8 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     var onStatusChanged: ((SpeechState) -> Void)?
     
     private var isIntentionallyListening = false
-    private var processedLength: Int = 0
-    private var lastTriggerTime: Date = Date.distantPast
+    private var commandStream = CommandStream()
+    private var settleWorkItem: DispatchWorkItem?
     private var restartWorkItem: DispatchWorkItem?
     private let queue = DispatchQueue(label: "com.voiceshot.speechQueue")
     
@@ -133,6 +133,8 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             self.isIntentionallyListening = false
             self.restartWorkItem?.cancel()
             self.restartWorkItem = nil
+            self.settleWorkItem?.cancel()
+            self.settleWorkItem = nil
             
             self.recognitionRequest?.endAudio()
             self.recognitionRequest = nil
@@ -207,7 +209,9 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         recognitionTask?.cancel()
         recognitionTask = nil
         
-        processedLength = 0
+        settleWorkItem?.cancel()
+        settleWorkItem = nil
+        commandStream = CommandStream()
         
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
@@ -215,23 +219,24 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         
         currentState = .listening
         
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            guard let self = self else { return }
-            
-            if let result = result {
-                let transcription = result.bestTranscription.formattedString
-                DispatchQueue.main.async {
-                    self.onTranscriptChanged?(transcription)
+        recognitionTask = recognizer.recognitionTask(with: request) { [weak self, weak request] result, error in
+            self?.queue.async { [weak self, weak request] in
+                guard let self = self, let request = request, self.recognitionRequest === request else { return }
+
+                if let result = result {
+                    let transcription = result.bestTranscription.formattedString
+                    DispatchQueue.main.async {
+                        self.onTranscriptChanged?(transcription)
+                    }
+                    self.processTranscription(transcription, isFinal: result.isFinal)
                 }
-                self.processTranscription(transcription)
-            }
-            
-            if error != nil || (result?.isFinal ?? false) {
-                self.handleSessionEnded()
+                if error != nil || (result?.isFinal ?? false) {
+                    self.handleSessionEnded()
+                }
             }
         }
     }
-    
+
     private func handleSessionEnded() {
         guard isIntentionallyListening else { return }
         
@@ -244,34 +249,49 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         queue.asyncAfter(deadline: .now() + 0.3, execute: workItem)
     }
     
-    // MARK: - Advanced Multi-Feature Target Parser (Supports snap1, snap2, snap3...)
-    
-    static func parseTarget(spoken: String) -> (matched: Bool, target: CaptureTarget, delay: Double, trigger: String)? {
-        let lower = spoken.lowercased()
-            .replacingOccurrences(of: "[^a-z0-9\\s]", with: " ", options: .regularExpression)
-        let words = lower.split(separator: " ").map { String($0) }
-        
-        let wordToNumber: [String: Int] = [
-            "1": 1, "one": 1,
-            "2": 2, "two": 2,
-            "3": 3, "three": 3,
-            "4": 4, "four": 4,
-            "5": 5, "five": 5,
-            "6": 6, "six": 6,
-            "7": 7, "seven": 7,
-            "8": 8, "eight": 8,
-            "9": 9, "nine": 9,
-            "10": 10, "ten": 10
-        ]
-        
+    // MARK: - Voice Command Parsing
+
+    typealias Command = (target: CaptureTarget, delay: Double, trigger: String)
+
+    private static let wordToNumber: [String: Int] = [
+        "1": 1, "one": 1,
+        "2": 2, "two": 2,
+        "3": 3, "three": 3,
+        "4": 4, "four": 4,
+        "5": 5, "five": 5,
+        "6": 6, "six": 6,
+        "7": 7, "seven": 7,
+        "8": 8, "eight": 8,
+        "9": 9, "nine": 9,
+        "10": 10, "ten": 10
+    ]
+
+    private static func words(in spoken: String) -> [String] {
+        spoken.lowercased()
+            .replacingOccurrences(of: "[^a-z0-9]", with: " ", options: .regularExpression)
+            .split(separator: " ")
+            .flatMap { word -> [String] in
+                // Give compact and spaced transcriptions the same positions in the stream.
+                if word.hasPrefix("snap"), let number = wordToNumber[String(word.dropFirst(4))] {
+                    return ["snap", String(number)]
+                }
+                return [String(word)]
+            }
+    }
+
+    static func parseTarget(spoken: String) -> Command? {
+        parseTarget(words: words(in: spoken)[...])
+    }
+
+    private static func parseTarget(words: ArraySlice<String>) -> Command? {
         // Check countdown: "in 3 seconds", "in 5 sec"
         var delaySeconds: Double = 0.0
-        for i in 0..<words.count {
-            if words[i] == "in" && i + 1 < words.count {
+        for i in words.indices {
+            if words[i] == "in" && i + 1 < words.endIndex {
                 if let num = wordToNumber[words[i + 1]] {
-                    if i + 2 < words.count && (words[i+2].hasPrefix("sec")) {
+                    if i + 2 < words.endIndex && (words[i + 2].hasPrefix("sec")) {
                         delaySeconds = Double(num)
-                    } else if i + 1 == words.count - 1 {
+                    } else if i + 1 == words.endIndex - 1 {
                         delaySeconds = Double(num)
                     }
                 }
@@ -281,18 +301,20 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         let joined = words.joined(separator: " ")
         
         // 0. Show Window Numbers / Badges
-        let badgeTriggers = ["show numbers", "show window numbers", "show windows", "number windows", "numbers"]
+        let badgeTriggers = ["show numbers", "show window numbers", "show windows", "number windows"]
         for bt in badgeTriggers {
             if joined.contains(bt) {
-                return (true, .showWindowNumbers, 0.0, bt)
+                return (.showWindowNumbers, 0.0, bt)
             }
         }
         
+        if joined == "numbers" { return (.showWindowNumbers, 0.0, "numbers") }
+
         // 1. OCR Text Extraction ("screenshot text", "copy text", "extract text")
         let ocrTriggers = ["screenshot text", "copy text", "extract text", "read text", "read screen", "snap text"]
         for ocr in ocrTriggers {
             if joined.contains(ocr) {
-                return (true, .extractText, delaySeconds, ocr)
+                return (.extractText, delaySeconds, ocr)
             }
         }
         
@@ -300,47 +322,29 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         let areaTriggers = ["screenshot area", "screenshot selection", "crop screenshot", "select area", "crop screen", "snap area"]
         for area in areaTriggers {
             if joined.contains(area) {
-                return (true, .interactiveArea, delaySeconds, area)
+                return (.interactiveArea, delaySeconds, area)
             }
         }
         
         // 3. Explicit "display N" / "screen N"
-        for i in 0..<words.count {
-            if (words[i] == "display" || words[i] == "screen") && i + 1 < words.count {
+        for i in words.indices {
+            if (words[i] == "display" || words[i] == "screen") && i + 1 < words.endIndex {
                 if let num = wordToNumber[words[i + 1]] {
-                    return (true, .display(num), delaySeconds, "\(words[i]) \(words[i+1])")
+                    return (.display(num), delaySeconds, "\(words[i]) \(words[i + 1])")
                 }
             }
         }
         
-        // 4. Compact "snapN" tokens: "snap1", "snap2", "snap3", "snap4", "snap5"...
-        for word in words {
-            if word.hasPrefix("snap") && word.count > 4 {
-                let numStr = String(word.dropFirst(4))
-                if let num = wordToNumber[numStr], num >= 1 && num <= 10 {
-                    return (true, .window(num), delaySeconds, word)
-                }
-            }
-        }
-        
-        // 5. Multi-word: "snap 1", "snap 2", "snap 3", "snap window 1", "screenshot 1", "window 1"
-        for i in 0..<words.count {
-            let w = words[i]
-
-            // "snap window N" or "screenshot window N"
-            if (w == "snap" || w == "screenshot") && i + 2 < words.count && words[i+1] == "window" {
-                if let num = wordToNumber[words[i + 2]], num >= 1 && num <= 10 {
-                    return (true, .window(num), delaySeconds, "\(w) window \(words[i+2])")
-                }
-            }
-
-            // "snap N", "screenshot N", "window N"
-            let isPrefix = (w == "snap" || w == "screenshot" || w == "window" || (w == "shot" && i > 0 && words[i-1] == "screen"))
-            if isPrefix && i + 1 < words.count {
-                if let num = wordToNumber[words[i + 1]], num >= 1 && num <= 10 {
-                    return (true, .window(num), delaySeconds, "\(words[i]) \(words[i+1])")
-                }
-            }
+        // Numbered windows, including compact snaps after tokenization.
+        for i in words.indices {
+            let word = words[i]
+            let isPrefix = word == "snap" || word == "screenshot" || word == "window"
+                || (word == "shot" && i > words.startIndex && words[i - 1] == "screen")
+            guard isPrefix, i + 1 < words.endIndex else { continue }
+            let hasWindowPrefix = (word == "snap" || word == "screenshot") && words[i + 1] == "window"
+            let numberIndex = hasWindowPrefix ? i + 2 : i + 1
+            guard numberIndex < words.endIndex, let number = wordToNumber[words[numberIndex]] else { continue }
+            return (.window(number), delaySeconds, "snap\(number)")
         }
 
         // 6. Named Application window: "snap <app>" or "screenshot <app>"
@@ -352,7 +356,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         ]
         for app in knownApps {
             if joined.contains("snap \(app)") || joined.contains("screenshot \(app)") || joined.contains("take screenshot \(app)") || joined.contains("capture \(app)") {
-                return (true, .app(app), delaySeconds, "snap \(app)")
+                return (.app(app), delaySeconds, "snap \(app)")
             }
         }
         
@@ -364,37 +368,63 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         }
         
         for trigger in generalTriggers where !trigger.isEmpty {
-            if joined.contains(trigger) {
-                return (true, .allDisplays, delaySeconds, trigger)
+            if trigger != "snap", " \(joined) ".contains(" \(trigger) ") {
+                return (.allDisplays, delaySeconds, trigger)
             }
         }
         
-        if joined == "snap" || joined.hasPrefix("snap ") || joined.hasSuffix(" snap") {
-            return (true, .allDisplays, delaySeconds, "snap")
+        if words.last == "snap" || joined == "snap please" || (joined.hasPrefix("snap in ") && delaySeconds > 0) {
+            return (.allDisplays, delaySeconds, "snap")
         }
 
         return nil
     }
     
     // MARK: - Stream Processing
-    
-    private func processTranscription(_ fullText: String) {
-        if fullText.count < processedLength {
-            processedLength = 0
-        }
-        
-        let startIndex = fullText.index(fullText.startIndex, offsetBy: processedLength, limitedBy: fullText.endIndex) ?? fullText.startIndex
-        let pendingText = String(fullText[startIndex...])
-        
-        if let match = SpeechRecognizer.parseTarget(spoken: pendingText) {
-            let now = Date()
-            if now.timeIntervalSince(lastTriggerTime) > 0.85 {
-                lastTriggerTime = now
-                processedLength = fullText.count
-                
-                DispatchQueue.main.async { [weak self] in
-                    self?.onTriggerDetected?(match.target, match.delay, match.trigger)
+
+    struct CommandStream {
+        private var processedWordCount = 0
+
+        mutating func commands(in transcript: String, settled: Bool) -> [Command] {
+            let words = SpeechRecognizer.words(in: transcript)
+            guard processedWordCount < words.count else { return [] }
+
+            var commands: [Command] = []
+            var start = processedWordCount
+            for index in words.indices.dropFirst(start) where words[index] == "snap" && index > start {
+                if let command = SpeechRecognizer.parseTarget(words: words[start..<index]) {
+                    commands.append(command)
                 }
+                start = index
+            }
+            processedWordCount = start
+            if settled, let command = SpeechRecognizer.parseTarget(words: words[start...]) {
+                commands.append(command)
+                processedWordCount = words.count
+            }
+            return commands
+        }
+    }
+
+    private func processTranscription(_ text: String, isFinal: Bool) {
+        settleWorkItem?.cancel()
+        settleWorkItem = nil
+        emit(commandStream.commands(in: text, settled: isFinal))
+        guard !isFinal else { return }
+
+        // Give a partial phrase time to acquire a number or a countdown.
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.emit(self.commandStream.commands(in: text, settled: true))
+        }
+        settleWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + 0.45, execute: workItem)
+    }
+
+    private func emit(_ commands: [Command]) {
+        for command in commands {
+            DispatchQueue.main.async { [weak self] in
+                self?.onTriggerDetected?(command.target, command.delay, command.trigger)
             }
         }
     }

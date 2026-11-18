@@ -4,10 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_PATH="$SCRIPT_DIR/VoiceShot.app"
 
-if [ ! -d "$APP_PATH" ]; then
-    echo "VoiceShot.app not found. Building now..."
-    "$SCRIPT_DIR/build.sh"
-fi
+"$SCRIPT_DIR/build.sh" --if-needed
 
 echo "Launching VoiceShot..."
 if [ "${1:-}" = "--monitor" ] || [ "${1:-}" = "-m" ]; then

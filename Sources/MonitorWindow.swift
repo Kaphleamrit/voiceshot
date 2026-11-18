@@ -180,7 +180,7 @@ final class MonitorWindowController: NSWindowController {
         mapHeader.spacing = 10
         mapHeader.alignment = .centerY
         
-        let mapTitle = NSTextField(labelWithString: "NUMBERED OPEN WINDOWS (SAY \"snap1\", \"snap2\", \"snap3\"...)")
+        let mapTitle = NSTextField(labelWithString: "OPEN WINDOWS BY VOICE COMMAND")
         mapTitle.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         mapTitle.textColor = .secondaryLabelColor
         mapHeader.addArrangedSubview(mapTitle)
@@ -224,19 +224,19 @@ final class MonitorWindowController: NSWindowController {
         testAllButton.action = #selector(testAllClicked)
         actionsStack1.addArrangedSubview(testAllButton)
         
-        testWindow1Button.title = "🪟 [1]"
+        testWindow1Button.title = "🪟 snap1"
         testWindow1Button.bezelStyle = .rounded
         testWindow1Button.target = self
         testWindow1Button.action = #selector(testWindow1Clicked)
         actionsStack1.addArrangedSubview(testWindow1Button)
         
-        testWindow2Button.title = "🪟 [2]"
+        testWindow2Button.title = "🪟 snap2"
         testWindow2Button.bezelStyle = .rounded
         testWindow2Button.target = self
         testWindow2Button.action = #selector(testWindow2Clicked)
         actionsStack1.addArrangedSubview(testWindow2Button)
         
-        testWindow3Button.title = "🪟 [3]"
+        testWindow3Button.title = "🪟 snap3"
         testWindow3Button.bezelStyle = .rounded
         testWindow3Button.target = self
         testWindow3Button.action = #selector(testWindow3Clicked)
@@ -336,7 +336,7 @@ final class MonitorWindowController: NSWindowController {
         } else {
             let lines = windows.prefix(6).map { item in
                 let titleTrunc = item.title.isEmpty ? "" : " - \"\(String(item.title.prefix(28)))\""
-                return " [\(item.number)] \(item.appName)\(titleTrunc)"
+                return " snap\(item.number)  \(item.appName)\(titleTrunc)"
             }
             windowListLabel.stringValue = lines.joined(separator: "\n")
         }
@@ -353,19 +353,15 @@ final class MonitorWindowController: NSWindowController {
             self?.transcriptLabel.stringValue = "Heard: \"\(text)\""
         }
         
-        speech.onTriggerDetected = { [weak self] target, delay, trigger in
-            let delayMsg = delay > 0 ? " in \(Int(delay))s" : ""
-            self?.transcriptLabel.stringValue = "🎯 Command detected: \"\(trigger)\"\(delayMsg) -> \(target.description)!"
-            self?.handleCaptureTriggered(target: target, delay: delay > 0 ? delay : nil)
-            self?.refreshActiveWindowsList()
-        }
-        
-        speech.onStatusChanged = { [weak self] state in
-            self?.handleSpeechState(state)
-        }
+    }
+
+    func showDetectedCommand(target: CaptureTarget, delay: Double, trigger: String) {
+        let delayMsg = delay > 0 ? " in \(Int(delay))s" : ""
+        transcriptLabel.stringValue = "🎯 Command detected: \"\(trigger)\"\(delayMsg) -> \(target.description)!"
+        refreshActiveWindowsList()
     }
     
-    private func handleSpeechState(_ state: SpeechState) {
+    func handleSpeechState(_ state: SpeechState) {
         switch state {
         case .listening:
             statusLabel.stringValue = "Listening for voice commands 🎙️"
@@ -448,21 +444,25 @@ final class MonitorWindowController: NSWindowController {
         handleCaptureTriggered(target: .extractText)
     }
     
-    private func handleCaptureTriggered(target: CaptureTarget, delay: Double? = nil) {
-        ScreenshotManager.shared.captureScreenshot(target: target, delay: delay) { [weak self] result in
+    private func handleCaptureTriggered(target: CaptureTarget) {
+        ScreenshotManager.shared.captureScreenshot(target: target) { [weak self] result in
             DispatchQueue.main.async {
-                switch result {
-                case .success(let path):
-                    let filename = (path as NSString).lastPathComponent
-                    let df = DateFormatter()
-                    df.dateFormat = "HH:mm:ss"
-                    let time = df.string(from: Date())
-                    let clipMsg = PreferencesManager.shared.copyToClipboard ? " (📋 Copied)" : ""
-                    self?.lastActionLabel.stringValue = "Last: \(target.description) - \(filename) at \(time)\(clipMsg)"
-                case .failure(let error):
-                    self?.lastActionLabel.stringValue = "Capture failed: \(error.localizedDescription)"
-                }
+                self?.showCaptureResult(result, target: target)
             }
+        }
+    }
+
+    func showCaptureResult(_ result: Result<String, Error>, target: CaptureTarget) {
+        switch result {
+        case .success(let path):
+            let filename = (path as NSString).lastPathComponent
+            let df = DateFormatter()
+            df.dateFormat = "HH:mm:ss"
+            let time = df.string(from: Date())
+            let clipMsg = PreferencesManager.shared.copyToClipboard ? " (📋 Copied)" : ""
+            lastActionLabel.stringValue = "Last: \(target.description) - \(filename) at \(time)\(clipMsg)"
+        case .failure(let error):
+            lastActionLabel.stringValue = "Capture failed: \(error.localizedDescription)"
         }
     }
     

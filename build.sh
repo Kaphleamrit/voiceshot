@@ -11,6 +11,19 @@ CONTENTS_DIR="$BUNDLE_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
+if [ "${1:-}" = "--if-needed" ] && [ -x "$MACOS_DIR/$APP_NAME" ]; then
+    needs_build=false
+    for source in build.sh Info.plist Sources/*.swift Resources/AppIcon.icns; do
+        if [ "$source" -nt "$MACOS_DIR/$APP_NAME" ]; then
+            needs_build=true
+            break
+        fi
+    done
+    if [ "$needs_build" = false ]; then
+        exit 0
+    fi
+fi
+
 echo "========================================"
 echo "  Building $APP_NAME for macOS"
 echo "========================================"
