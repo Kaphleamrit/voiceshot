@@ -39,7 +39,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     private var settleWorkItem: DispatchWorkItem?
     private var lastPartialTranscript: String?
     private var restartWorkItem: DispatchWorkItem?
-    private let queue = DispatchQueue(label: "com.voiceshot.speechQueue")
+    private let queue = DispatchQueue(label: "com.voiceshot.speechQueue", qos: .userInitiated)
     
     private override init() {
         super.init()
@@ -169,14 +169,17 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                 let recordingFormat = inputNode.outputFormat(forBus: 0)
                 
                 inputNode.removeTap(onBus: 0)
+                var lastMeterTime: TimeInterval = 0
                 inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
                     guard let self = self else { return }
                     self.recognitionRequest?.append(buffer)
                     
-                    if let channelData = buffer.floatChannelData?[0] {
-                        let frameLength = UInt(buffer.frameLength)
+                    let now = ProcessInfo.processInfo.systemUptime
+                    if now - lastMeterTime >= 0.05, buffer.frameLength > 0, let channelData = buffer.floatChannelData?[0] {
+                        lastMeterTime = now
+                        let frameLength = Int(buffer.frameLength)
                         var sum: Float = 0
-                        for i in 0..<Int(frameLength) {
+                        for i in 0..<frameLength {
                             let sample = channelData[i]
                             sum += sample * sample
                         }
@@ -202,6 +205,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         guard isIntentionallyListening else { return }
         guard let recognizer = speechRecognizer, recognizer.isAvailable else {
             currentState = .error("Speech Recognizer is unavailable.")
+            handleSessionEnded(retryAfter: 1)
             return
         }
         
@@ -218,6 +222,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        if #available(macOS 13.0, *) { request.addsPunctuation = true }
         request.contextualStrings = VoiceCommandDictionary.recognitionHints(triggerPhrases: triggerPhrases)
         self.recognitionRequest = request
         
@@ -227,21 +232,25 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             self?.queue.async { [weak self, weak request] in
                 guard let self = self, let request = request, self.recognitionRequest === request else { return }
 
-                if let result = result {
+                if let result {
                     let transcription = result.bestTranscription.formattedString
-                    DispatchQueue.main.async {
-                        self.onTranscriptChanged?(transcription)
+                    if transcription != self.lastPartialTranscript {
+                        DispatchQueue.main.async { self.onTranscriptChanged?(transcription) }
                     }
                     self.processTranscription(transcription, isFinal: result.isFinal)
                 }
-                if error != nil || (result?.isFinal ?? false) {
-                    self.handleSessionEnded()
+                if error != nil {
+                    self.settleWorkItem?.cancel()
+                    self.emit(self.commandStream.flush())
+                    self.handleSessionEnded(retryAfter: 0.3)
+                } else if result?.isFinal == true {
+                    self.startRecognitionTask()
                 }
             }
         }
     }
 
-    private func handleSessionEnded() {
+    private func handleSessionEnded(retryAfter: TimeInterval = 0.3) {
         guard isIntentionallyListening else { return }
         
         restartWorkItem?.cancel()
@@ -250,7 +259,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             self.startRecognitionTask()
         }
         restartWorkItem = workItem
-        queue.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+        queue.asyncAfter(deadline: .now() + retryAfter, execute: workItem)
     }
     
     // MARK: - Voice Command Processing
@@ -272,48 +281,70 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         }
 
         var settleInterval: TimeInterval? {
-            pending.map { $0.target == .allDisplays ? 0.35 : 0.20 }
+            pending.map { $0.target == .allDisplays ? 0.25 : 0.10 }
         }
 
         mutating func commands(in transcript: String, settled: Bool) -> [Command] {
             pending = nil
-            let words = VoiceCommandDictionary.words(in: transcript)
+            let sentences = transcript.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            var words: [String] = []
+            var boundaries: [Int] = []
+            for (index, sentence) in sentences.enumerated() {
+                let phrase = VoiceCommandDictionary.words(in: sentence)
+                guard !phrase.isEmpty else { continue }
+                words.append(contentsOf: phrase)
+                if index < sentences.count - 1 { boundaries.append(words.count) }
+            }
             guard processedWordCount < words.count else { return [] }
 
             var commands: [Command] = []
             var start = processedWordCount
+            var remainingBoundaries = boundaries.drop(while: { $0 <= start })
             while start < words.count {
-                if let command = dictionary.match(words[start...]) {
+                let phraseEnd = remainingBoundaries.first ?? words.count
+                let phrase = words[start..<phraseEnd]
+                if let command = dictionary.match(phrase) {
                     pending = command
-                    pendingWordCount = words.count
-                    if settled || command.target == .showWindowNumbers ||
-                        (command.delay > 0 && VoiceCommandDictionary.endsWithSeconds(words.last)) {
+                    pendingWordCount = phraseEnd
+                    if settled || phraseEnd < words.count || command.target == .showWindowNumbers ||
+                        (command.delay > 0 && VoiceCommandDictionary.endsWithSeconds(phrase.last)) {
                         commands.append(contentsOf: flush())
+                        start = phraseEnd
+                        if remainingBoundaries.first == phraseEnd { remainingBoundaries = remainingBoundaries.dropFirst() }
+                        continue
                     }
                     break
                 }
 
                 // A following command establishes the previous command's boundary.
-                let end = min(words.count - 1, start + dictionary.maxWordCount + 6)
-                guard end > start else { break }
+                let end = min(phraseEnd - 1, start + dictionary.maxWordCount + 6)
                 var next: (Int, Command)?
-                for boundary in (start + 1...end).reversed() {
-                    let word = words[boundary]
-                    let explicitSeparator = words[boundary - 1] == "then" || words[boundary - 1] == "and"
-                    guard explicitSeparator || dictionary.canStartCommand(word),
-                          let command = dictionary.match(words[start..<boundary]),
-                          dictionary.hasCommandPrefix(words[boundary...]) else { continue }
-                    if command.target == .allDisplays, ["window", "screen", "display"].contains(word),
-                       !explicitSeparator {
-                        continue
+                if end > start {
+                    for boundary in (start + 1...end).reversed() {
+                        let word = words[boundary]
+                        let explicitSeparator = words[boundary - 1] == "then" || words[boundary - 1] == "and"
+                        guard explicitSeparator || dictionary.canStartCommand(word),
+                              let command = dictionary.match(words[start..<boundary]),
+                              dictionary.hasCommandPrefix(words[boundary..<phraseEnd]) else { continue }
+                        if command.target == .allDisplays, ["window", "screen", "display"].contains(word),
+                           !explicitSeparator { continue }
+                        next = (boundary, command)
+                        break
                     }
-                    next = (boundary, command)
+                }
+                if let (boundary, command) = next {
+                    commands.append(command)
+                    start = boundary
+                    processedWordCount = boundary
+                } else if let commandStart = dictionary.numberedSnapAfterChatter(phrase) {
+                    start = commandStart
+                } else if remainingBoundaries.first != nil {
+                    start = phraseEnd
+                    processedWordCount = phraseEnd
+                    remainingBoundaries = remainingBoundaries.dropFirst()
+                } else {
                     break
                 }
-                guard let (boundary, command) = next else { break }
-                commands.append(command)
-                start = boundary
-                processedWordCount = boundary
             }
             return commands
         }

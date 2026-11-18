@@ -207,6 +207,20 @@ struct VoiceCommandDictionary {
         return (words.startIndex + 1...end).contains { match(words[..<$0]) != nil }
     }
 
+    // An unrelated partial transcription should not block an explicit numbered snap for the rest of the session.
+    func numberedSnapAfterChatter(_ words: ArraySlice<String>) -> Int? {
+        let earliest = max(words.startIndex + 3, words.endIndex - maxWordCount - 3)
+        guard earliest < words.endIndex - 1 else { return nil }
+        for index in (earliest..<(words.endIndex - 1)).reversed() {
+            let target = words[index + 1]
+            guard Self.compactPrefixes.contains(words[index]), target != "to", target != "for",
+                  !words[..<index].suffix(4).contains(where: { ["not", "never", "don", "dont"].contains($0) }),
+                  let command = match(words[index...]), case .window = command.target else { continue }
+            return index
+        }
+        return nil
+    }
+
     func match(_ transcript: ArraySlice<String>) -> Command? {
         if transcript.count <= customIndex.maxWordCount {
             let raw = transcript.joined(separator: " ")

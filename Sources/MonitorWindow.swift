@@ -358,7 +358,6 @@ final class MonitorWindowController: NSWindowController {
     func showDetectedCommand(target: CaptureTarget, delay: Double, trigger: String) {
         let delayMsg = delay > 0 ? " in \(Int(delay))s" : ""
         transcriptLabel.stringValue = "🎯 Command detected: \"\(trigger)\"\(delayMsg) -> \(target.description)!"
-        refreshActiveWindowsList()
     }
     
     func handleSpeechState(_ state: SpeechState) {

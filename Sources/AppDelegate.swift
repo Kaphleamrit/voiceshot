@@ -140,6 +140,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ScreenshotManager.shared.captureScreenshot(target: target, delay: delay > 0 ? delay : nil) { result in
                 DispatchQueue.main.async {
                     self?.monitor?.showCaptureResult(result, target: target)
+                    if case .failure(let error) = result {
+                        self?.statusItem.button?.toolTip = error.localizedDescription
+                    } else {
+                        self?.statusItem.button?.toolTip = "VoiceShot Pro - Voice-Activated Screenshot"
+                    }
                 }
                 switch result {
                 case .success(let path):

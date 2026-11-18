@@ -65,7 +65,7 @@ Every capture is immediately written to the macOS **pasteboard**, ready to paste
 
 ## 🔢 Window Numbering System (`snap1`, `snap2`, `snap3`...)
 
-VoiceShot queries macOS Quartz Window Services (`CGWindowListCopyWindowInfo`) and indexes visible application windows in front-to-back z-order:
+VoiceShot numbers application windows from front to back across connected displays. A window that's fully covered or off-screen gets no number. A partially visible window gets its badge on the part you can see.
 
 ```
   ┌───────────────────────┐
@@ -82,9 +82,9 @@ VoiceShot queries macOS Quartz Window Services (`CGWindowListCopyWindowInfo`) an
 ### Visual Window Badges
 
 Say **"show numbers"** or **"show window numbers"** (or press `Cmd + Shift + N`):
-1. VoiceShot calculates the exact top-left title bar position of each open window.
-2. Sleek, high-contrast floating badges (`[ 1 ]`, `[ 2 ]`, `[ 3 ]`) appear on your screen for 4.0 seconds.
-3. Badges automatically dismiss before any capture starts so they never appear inside your screenshots.
+1. VoiceShot places a badge on the exposed part of each numbered window.
+2. The number assignments last four seconds, so you can capture more than one numbered window.
+3. Badge overlays hide before capture.
 
 ---
 

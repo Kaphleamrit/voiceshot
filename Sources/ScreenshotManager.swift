@@ -32,6 +32,9 @@ final class ScreenshotManager {
     
     private let speechSynthesizer = AVSpeechSynthesizer()
     private let captureQueue = DispatchQueue(label: "com.voiceshot.captureQueue", qos: .userInitiated)
+    private let selectionQueue = DispatchQueue(label: "com.voiceshot.selectionQueue", qos: .userInitiated)
+    private var flashWindows: [NSWindow] = []
+    private var requestedScreenRecording = false
     
     private init() {
         requestNotificationPermission()
@@ -55,16 +58,19 @@ final class ScreenshotManager {
     /// Flashes all connected screens briefly with a smooth white fade
     func flashScreens() {
         DispatchQueue.main.async {
+            self.dismissFlash()
             for screen in NSScreen.screens {
                 let window = NSWindow(contentRect: screen.frame,
                                       styleMask: .borderless,
                                       backing: .buffered,
                                       defer: false)
                 window.isOpaque = false
+                window.isReleasedWhenClosed = false
                 window.backgroundColor = NSColor.white.withAlphaComponent(0.65)
                 window.level = .floating
                 window.ignoresMouseEvents = true
                 window.orderFrontRegardless()
+                self.flashWindows.append(window)
                 
                 NSAnimationContext.runAnimationGroup({ context in
                     context.duration = 0.22
@@ -72,11 +78,17 @@ final class ScreenshotManager {
                     window.animator().alphaValue = 0.0
                 }, completionHandler: {
                     window.orderOut(nil)
+                    self.flashWindows.removeAll { $0 === window }
                 })
             }
         }
     }
     
+    private func dismissFlash() {
+        flashWindows.forEach { $0.orderOut(nil) }
+        flashWindows.removeAll()
+    }
+
     /// Resolves an accessible, writable folder for saving screenshots
     func resolveOutputFolder() -> String {
         let prefs = PreferencesManager.shared
@@ -112,7 +124,7 @@ final class ScreenshotManager {
         }
         
         // Always dismiss visual badges so they don't appear in the captured image
-        WindowManager.shared.dismissBadges()
+        let badgeTargets = WindowManager.shared.hideBadgesForCapture()
         
         let prefs = PreferencesManager.shared
         let captureDelay = delay ?? prefs.delayBeforeCapture
@@ -131,7 +143,15 @@ final class ScreenshotManager {
                 targetLabel = " - Display \(displayIndex)"
                 arguments.append(contentsOf: ["-D", "\(displayIndex)"])
             case .window(let windowIndex):
-                if let win = WindowManager.shared.window(forNumber: windowIndex) {
+                let win: WindowItem?
+                if badgeTargets.isEmpty {
+                    win = WindowManager.shared.window(forNumber: windowIndex)
+                } else if let selected = badgeTargets.first(where: { $0.number == windowIndex }) {
+                    win = WindowManager.shared.getVisibleWindows(limit: .max).first { $0.id == selected.id }
+                } else {
+                    win = nil
+                }
+                if let win {
                     targetLabel = " - Window \(windowIndex) (\(win.appName))"
                     targetDetail = "Window \(windowIndex) (\(win.appName))"
                     arguments.append(contentsOf: ["-l", "\(win.id)"])
@@ -161,9 +181,6 @@ final class ScreenshotManager {
                 break
             }
             
-            if prefs.flashScreen && target != .interactiveArea {
-                self.flashScreens()
-            }
             let folder = self.resolveOutputFolder()
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
@@ -194,10 +211,16 @@ final class ScreenshotManager {
             process.standardError = pipe
             
             do {
+                DispatchQueue.main.sync {
+                    self.dismissFlash()
+                    WindowManager.shared.hideBadgesForCapture()
+                }
                 try process.run()
+                let errData = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
                 
                 if process.terminationStatus == 0 && FileManager.default.fileExists(atPath: targetPath) {
+                    if prefs.flashScreen && target != .interactiveArea { self.flashScreens() }
                     if target == .extractText {
                         self.performTextExtraction(from: targetPath)
                     } else {
@@ -213,9 +236,18 @@ final class ScreenshotManager {
                     
                     completion(.success(targetPath))
                 } else {
-                    let errData = pipe.fileHandleForReading.readDataToEndOfFile()
                     let errMsg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let description = (errMsg?.isEmpty == false) ? errMsg! : "Failed to capture \(targetDetail)"
+                    let description: String
+                    if !CGPreflightScreenCaptureAccess() {
+                        DispatchQueue.main.async {
+                            guard !self.requestedScreenRecording else { return }
+                            self.requestedScreenRecording = true
+                            _ = CGRequestScreenCaptureAccess()
+                        }
+                        description = "Enable VoiceShot in System Settings under Privacy & Security → Screen Recording."
+                    } else {
+                        description = (errMsg?.isEmpty == false) ? errMsg! : "Failed to capture \(targetDetail)"
+                    }
                     let err = NSError(domain: "VoiceShot", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: description])
                     completion(.failure(err))
                 }
@@ -224,12 +256,13 @@ final class ScreenshotManager {
             }
         }
         
+        let queue = target == .interactiveArea ? selectionQueue : captureQueue
         if captureDelay > 0.05 {
-            captureQueue.asyncAfter(deadline: .now() + captureDelay) {
+            queue.asyncAfter(deadline: .now() + captureDelay) {
                 performCapture()
             }
         } else {
-            captureQueue.async {
+            queue.async {
                 performCapture()
             }
         }

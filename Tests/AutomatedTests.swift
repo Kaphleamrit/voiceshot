@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import Foundation
 
 @main
@@ -116,6 +117,35 @@ struct VoiceShotTests {
             assertTest(w2.number == 2, "Window #2 found: \(w2.appName) (ID: \(w2.id))")
         }
 
+        func window(_ id: CGWindowID, _ bounds: CGRect, alpha: Double = 1, pid: pid_t = 22) -> [String: Any] {
+            [
+                kCGWindowNumber as String: id, kCGWindowOwnerPID as String: pid,
+                kCGWindowLayer as String: 0, kCGWindowAlpha as String: alpha,
+                kCGWindowBounds as String: bounds.dictionaryRepresentation
+            ]
+        }
+        let primary = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let secondary = CGRect(x: -350, y: 50, width: 300, height: 200)
+        let visibleWindows = WindowManager.numberVisibleWindows([
+            window(1, CGRect(x: 0, y: 0, width: 100, height: 100)),
+            window(2, CGRect(x: 100, y: 0, width: 100, height: 100)),
+            window(3, CGRect(x: 40, y: 20, width: 120, height: 60)),
+            window(4, CGRect(x: 180, y: 20, width: 40, height: 50)),
+            window(5, CGRect(x: 410, y: 40, width: 100, height: 100)),
+            window(6, CGRect(x: -110, y: 30, width: 100, height: 80)),
+            window(7, CGRect(x: 240, y: 0, width: 120, height: 90), alpha: 0),
+            window(8, CGRect(x: 240, y: 0, width: 60, height: 90), alpha: 0.5),
+            window(9, CGRect(x: 245, y: 5, width: 40, height: 75)),
+            window(10, CGRect(x: 320, y: 0, width: 80, height: 90), pid: 99),
+            window(11, CGRect(x: 330, y: 5, width: 50, height: 75))
+        ], displays: [primary, secondary], excluding: 99, limit: 10)
+        assertTest(visibleWindows.map(\.id) == [1, 2, 4, 6, 8, 9], "Only exposed windows on active displays get numbers")
+        assertTest(visibleWindows.map(\.number) == Array(1...6), "Visible window numbers have no gaps")
+        assertTest(visibleWindows.first(where: { $0.id == 4 })?.visibleBounds ==
+                   CGRect(x: 200, y: 20, width: 20, height: 50), "Badges use exposed bounds of small windows")
+        assertTest(visibleWindows.first(where: { $0.id == 6 })?.visibleBounds ==
+                   CGRect(x: -110, y: 50, width: 60, height: 60), "Bounds clip to the secondary display")
+
         // Exercise the production stream processor with cumulative recognition results.
         var stream = SpeechRecognizer.CommandStream()
         assertTest(stream.commands(in: "snap", settled: false).isEmpty,
@@ -147,9 +177,9 @@ struct VoiceShotTests {
                    "A revised number captures Window 10")
 
         stream = SpeechRecognizer.CommandStream()
-        assertTest(stream.commands(in: "snap", settled: false).isEmpty && stream.settleInterval == 0.35,
+        assertTest(stream.commands(in: "snap", settled: false).isEmpty && stream.settleInterval == 0.25,
                    "Bare snap keeps a longer window for the target")
-        assertTest(stream.commands(in: "snup too", settled: false).isEmpty && stream.settleInterval == 0.20,
+        assertTest(stream.commands(in: "snup too", settled: false).isEmpty && stream.settleInterval == 0.10,
                    "A complete corrected target uses a shorter hold")
         assertTest(stream.flush().map(\.target) == [.window(2)] && stream.flush().isEmpty,
                    "Flushing a dictionary match emits it exactly once")
@@ -169,6 +199,19 @@ struct VoiceShotTests {
         let correctedDelay = SpeechRecognizer.parseTarget(spoken: "snup tree in fife sekonds")
         assertTest(correctedDelay?.target == .window(3) && correctedDelay?.delay == 5,
                    "The dictionary also recognizes countdown homophones")
+        stream = SpeechRecognizer.CommandStream()
+        assertTest(stream.commands(in: "that was some unrelated speech", settled: false).isEmpty,
+                   "Unrelated speech alone does not capture")
+        assertTest(stream.commands(in: "that was some unrelated speech snap2", settled: false).isEmpty &&
+                   stream.flush().map(\.target) == [.window(2)], "A numbered snap recovers after unrelated speech")
+        assertTest(stream.commands(in: "that was some unrelated speech snap two. Copy text.", settled: true)
+                    .map(\.target) == [.extractText], "A subsequent sentence executes without repeating the snap")
+        stream = SpeechRecognizer.CommandStream()
+        assertTest(stream.commands(in: "we were talking. Display one.", settled: true).map(\.target) == [.display(1)],
+                   "A new sentence recovers any command after unrelated speech")
+        stream = SpeechRecognizer.CommandStream()
+        assertTest(stream.commands(in: "I said do not snap one", settled: true).isEmpty,
+                   "Recovery ignores a negated request")
 
         print("========================================")
         print("📊 Results: \(passed) Passed, \(failed) Failed")
