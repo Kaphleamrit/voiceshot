@@ -147,6 +147,24 @@ struct VoiceShotTests {
         }
         var chatter = SpeechRecognizer.CommandStream()
         assertTest(chatter.commands(in: "okay show the numbers", settled: true).map(\.target) == [.showWindowNumbers], "Recover badge command after chatter")
+        let reportedTranscript = "Tags snap1 text text nums text numbers numbers numbers numbers tags numbers tags badges numb nums"
+        let expectedCommands: [CaptureTarget] = [.showWindowNumbers, .window(1)] +
+            Array(repeating: .showWindowNumbers, count: 10)
+        var reportedStream = SpeechRecognizer.CommandStream()
+        assertTest(reportedStream.commands(in: reportedTranscript, settled: false).map(\.target) == expectedCommands,
+                   "Unpunctuated live transcript recovers every badge command and the snap")
+        assertTest(reportedStream.commands(in: reportedTranscript + ".", settled: true).isEmpty,
+                   "Finalizing the live transcript does not rerun handled commands")
+        reportedStream = SpeechRecognizer.CommandStream()
+        var partial = ""
+        let liveCommands = reportedTranscript.split(separator: " ").flatMap { word in
+            partial += " " + word
+            return reportedStream.commands(in: partial, settled: false).map(\.target)
+        }
+        assertTest(liveCommands == expectedCommands, "Growing partial transcripts keep responding after unrecognized words")
+        reportedStream = SpeechRecognizer.CommandStream()
+        assertTest(reportedStream.commands(in: "text nums snap1", settled: true).map(\.target) ==
+                   [.showWindowNumbers, .window(1)], "A badge after chatter still runs before the next snap")
 
         let pronunciationCases: [(String, CaptureTarget)] = [
             ("snup won", .window(1)), ("snap too", .window(2)), ("snapp tree", .window(3)),

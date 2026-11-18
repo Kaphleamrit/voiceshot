@@ -29,6 +29,7 @@ struct VoiceCommandDictionary {
     private static let seconds: Set<String> = ["second", "seconds", "sec", "secs", "secons", "sekonds"]
     private static let separators = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789").inverted
 
+    private static let bareBadgeCommands: Set<String> = ["numbers", "nums", "tags", "badges", "labels"]
     private static let shortBadgeCommands = ["nums", "tags", "badges", "labels",
                                              "show nums", "show tags", "show badges", "show labels"]
 
@@ -216,6 +217,21 @@ struct VoiceCommandDictionary {
     static func badgeSelection(_ words: ArraySlice<String>) -> Command? {
         guard words.count == 1, let word = words.first, let number = numberValues[word] else { return nil }
         return (.window(number), 0, "snap\(number)")
+    }
+
+    func badgeCommandAfterChatter(_ words: ArraySlice<String>) -> Int? {
+        let lastBadge = words.lastIndex { Self.bareBadgeCommands.contains($0) }
+        guard let lastBadge else { return nil }
+        for index in words.indices.dropFirst() where index <= lastBadge {
+            let following = words[(index + 1)...]
+            guard Self.bareBadgeCommands.contains(words[index]),
+                  index < lastBadge || following.isEmpty || hasCommandPrefix(following),
+                  !words[..<index].suffix(4).contains(where: { ["not", "never", "don", "dont"].contains($0) }),
+                  !["the", "these", "those", "my", "your"].contains(words[index - 1]),
+                  match(words[(index - 1)...index])?.target != .app("numbers") else { continue }
+            return index
+        }
+        return nil
     }
 
     func numberCommandAfterChatter(_ words: ArraySlice<String>) -> Int? {

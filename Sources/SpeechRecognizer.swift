@@ -359,17 +359,23 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                 }
 
                 // A following command establishes the previous command's boundary.
+                let badgeAfterChatter = dictionary.badgeCommandAfterChatter(phrase)
                 let end = min(phraseEnd - 1, start + dictionary.maxWordCount + 6)
                 var next: (Int, Command)?
                 if end > start {
                     for boundary in (start + 1...end).reversed() {
                         let word = words[boundary]
                         let explicitSeparator = words[boundary - 1] == "then" || words[boundary - 1] == "and"
-                        guard explicitSeparator || dictionary.canStartCommand(word) || VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil,
-                              let command = dictionary.match(words[start..<boundary]) ??
-                                (selectingBadge ? VoiceCommandDictionary.badgeSelection(words[start..<boundary]) : nil),
+                        guard let command = dictionary.match(words[start..<boundary]) ??
+                                (selectingBadge ? VoiceCommandDictionary.badgeSelection(words[start..<boundary]) : nil) else { continue }
+                        let badgeFollowsChatter = badgeAfterChatter.map { $0 >= boundary } == true
+                        let numberedSnap = words[start] == "snap" && command.trigger.hasPrefix("snap") &&
+                            Int(command.trigger.dropFirst(4)) != nil
+                        let canSkipToBadge = badgeFollowsChatter && (command.target == .showWindowNumbers || numberedSnap)
+                        guard canSkipToBadge || explicitSeparator || dictionary.canStartCommand(word) || VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil,
                               (dictionary.hasCommandPrefix(words[boundary..<phraseEnd]) ||
-                               (command.target == .showWindowNumbers && VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil)) else { continue }
+                               (command.target == .showWindowNumbers && VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil) ||
+                               canSkipToBadge) else { continue }
                         if command.target == .allDisplays, ["window", "screen", "display"].contains(word),
                            !explicitSeparator { continue }
                         next = (boundary, command)
@@ -381,7 +387,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                     commands.append(command)
                     start = boundary
                     processedWordCount = boundary
-                } else if let commandStart = dictionary.numberCommandAfterChatter(phrase) {
+                } else if let commandStart = [dictionary.numberCommandAfterChatter(phrase), badgeAfterChatter].compactMap({ $0 }).min() {
                     start = commandStart
                 } else if remainingBoundaries.first != nil {
                     start = phraseEnd
