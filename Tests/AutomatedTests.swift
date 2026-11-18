@@ -105,13 +105,41 @@ struct VoiceShotTests {
             assertTest(selection.commands(in: phrase, settled: true).map(\.target) == [.showWindowNumbers, .window(3)], phrase)
         }
         let hints = VoiceCommandDictionary.recognitionHints(triggerPhrases: [])
-        for word in ["nums", "tags", "badges", "labels"] {
+        for word in ["numbers", "nums", "tags", "badges", "labels"] {
             for alias in [word, "show " + word] {
                 var stream = SpeechRecognizer.CommandStream()
                 assertTest(hints.contains(alias), "Recognition hint for \(alias)")
                 assertTest(stream.commands(in: alias, settled: false).map(\.target) == [.showWindowNumbers], "Show badges immediately for \(alias)")
                 assertTest(stream.commands(in: alias + " two", settled: true, badgesActive: true).map(\.target) == [.window(2)], "Select two after \(alias) without repeating badges")
             }
+        }
+        for alias in ["nums", "numbers"] {
+            var stream = SpeechRecognizer.CommandStream()
+            let show = stream.commands(in: alias, settled: false)
+            let repeatShow = stream.commands(in: "\(alias) two \(alias)", settled: false, badgesActive: true)
+            assertTest((show + repeatShow).map(\.target) == [.showWindowNumbers, .window(2), .showWindowNumbers],
+                       "A badge selection followed by \(alias) reopens the badges in one transcript")
+            assertTest(stream.commands(in: "\(alias) two \(alias).", settled: true, badgesActive: true).isEmpty,
+                       "A final transcription does not repeat the commands")
+            assertTest(stream.commands(in: "\(alias) two \(alias). \(alias).", settled: false).map(\.target) == [.showWindowNumbers],
+                       "Repeating \(alias) after the badges expire shows them again")
+        }
+        for alias in ["numbers", "nums", "tags", "badges", "labels", "show numbers", "show tags"] {
+            var stream = SpeechRecognizer.CommandStream()
+            var emitted = 0
+            for index in 0..<20 {
+                let start = Double(index)
+                _ = stream.beginFreshBadgeUtterance(alias, start: start, end: start + 0.4)
+                emitted += stream.commands(in: alias, settled: false).count
+                _ = stream.beginFreshBadgeUtterance(alias, start: start, end: start + 0.5)
+                emitted += stream.commands(in: alias, settled: true).count
+            }
+            assertTest(emitted == 20, "Twenty distinct utterances of \(alias) each trigger once")
+
+            stream = SpeechRecognizer.CommandStream()
+            let burst = Array(repeating: alias, count: 20).joined(separator: " ")
+            assertTest(stream.commands(in: burst, settled: false).map(\.target) ==
+                       Array(repeating: .showWindowNumbers, count: 20), "Recognize every \(alias) in a single burst")
         }
         for phrase in ["the price tags fell", "read the labels", "those badges are blue"] {
             var stream = SpeechRecognizer.CommandStream()

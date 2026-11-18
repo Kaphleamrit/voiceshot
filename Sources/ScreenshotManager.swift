@@ -219,7 +219,13 @@ final class ScreenshotManager {
             do {
                 DispatchQueue.main.sync {
                     self.dismissFlash()
-                    WindowManager.shared.hideBadgesForCapture()
+                    switch target {
+                    case .window, .app:
+                        // A window capture excludes overlays. Keep any badges requested since it was queued.
+                        break
+                    default:
+                        WindowManager.shared.hideBadgesForCapture()
+                    }
                 }
                 let previousClipboard = targetPath == nil ? NSPasteboard.general.changeCount : nil
                 try process.run()

@@ -238,6 +238,12 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                     if commandText != self.lastPartialTranscript {
                         DispatchQueue.main.async { self.onTranscriptChanged?(transcription) }
                     }
+                    let segments = result.bestTranscription.segments
+                    if let first = segments.first, let last = segments.last,
+                       self.commandStream.beginFreshBadgeUtterance(commandText, start: first.timestamp,
+                                                                   end: last.timestamp + last.duration) {
+                        self.lastPartialTranscript = nil
+                    }
                     self.processTranscription(commandText, isFinal: result.isFinal)
                 }
                 if error != nil {
@@ -294,6 +300,21 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         private var processedWordCount = 0
         private var pending: Command?
         private var pendingWordCount = 0
+        private var lastAudioEnd: TimeInterval?
+
+        // Speech may replace a previous utterance with identical text covering new audio.
+        mutating func beginFreshBadgeUtterance(_ text: String, start: TimeInterval, end: TimeInterval) -> Bool {
+            guard end > start else { return false }
+            let previousEnd = lastAudioEnd
+            lastAudioEnd = max(lastAudioEnd ?? end, end)
+            guard let previousEnd, start >= previousEnd,
+                  dictionary.match(VoiceCommandDictionary.words(in: text)[...])?.target == .showWindowNumbers else {
+                return false
+            }
+            processedWordCount = 0
+            pending = nil
+            return true
+        }
 
         init(triggerPhrases: [String] = PreferencesManager.shared.triggerPhrases) {
             dictionary = VoiceCommandDictionary(triggerPhrases: triggerPhrases)
@@ -345,7 +366,8 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                         let word = words[boundary]
                         let explicitSeparator = words[boundary - 1] == "then" || words[boundary - 1] == "and"
                         guard explicitSeparator || dictionary.canStartCommand(word) || VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil,
-                              let command = dictionary.match(words[start..<boundary]),
+                              let command = dictionary.match(words[start..<boundary]) ??
+                                (selectingBadge ? VoiceCommandDictionary.badgeSelection(words[start..<boundary]) : nil),
                               (dictionary.hasCommandPrefix(words[boundary..<phraseEnd]) ||
                                (command.target == .showWindowNumbers && VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil)) else { continue }
                         if command.target == .allDisplays, ["window", "screen", "display"].contains(word),

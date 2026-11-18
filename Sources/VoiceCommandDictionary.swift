@@ -192,7 +192,7 @@ struct VoiceCommandDictionary {
     }
 
     static func recognitionHints(triggerPhrases: [String]) -> [String] {
-        let commands = ["show numbers", "show windows", "snap text", "snap area", "copy text", "screenshot"] + shortBadgeCommands
+        let commands = ["numbers", "show numbers", "show windows", "snap text", "snap area", "copy text", "screenshot"] + shortBadgeCommands
         let numbered = numbers.enumerated().flatMap { index, names in
             ["snap \(index + 1)", "snap\(index + 1)", "snap \(names[0])", "number \(names[0])"]
         }
