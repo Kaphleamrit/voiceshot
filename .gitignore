@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon\r\r
+
+# Build Artifacts
+VoiceShot.app/
+build/
+.build/
+
+# Editor files
+*.swp
+*~
+.idea/
+.vscode/
