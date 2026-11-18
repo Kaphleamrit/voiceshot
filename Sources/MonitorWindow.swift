@@ -8,7 +8,7 @@ final class MonitorWindowController: NSWindowController {
     private let statusLabel = NSTextField(labelWithString: "Status: Initializing...")
     private let statusIndicator = NSView()
     private let audioLevelIndicator = NSProgressIndicator()
-    private let transcriptLabel = NSTextField(wrappingLabelWithString: "Commands: \"snap1\", \"snap2\", \"snap3\", \"snap Safari\", \"show numbers\"...")
+    private let transcriptLabel = NSTextField(wrappingLabelWithString: "Commands: \"snap1\", \"snap2\", \"tags\", \"show numbers\", \"snap Safari\"...")
     private let lastActionLabel = NSTextField(labelWithString: "Last screenshot: None")
     
     private let toggleListeningButton = NSButton()
@@ -25,6 +25,7 @@ final class MonitorWindowController: NSWindowController {
     
     private let savePathField = NSTextField()
     private let triggersField = NSTextField()
+    private let saveCheckbox = NSButton(checkboxWithTitle: "Save screenshots locally", target: nil, action: nil)
     private let clipboardCheckbox = NSButton(checkboxWithTitle: "Copy screenshot to clipboard automatically", target: nil, action: nil)
     private let floatingPreviewCheckbox = NSButton(checkboxWithTitle: "Show floating preview thumbnail (quick actions)", target: nil, action: nil)
     private let spokenFeedbackCheckbox = NSButton(checkboxWithTitle: "Spoken voice confirmation (e.g. \"Window 1 captured\")", target: nil, action: nil)
@@ -268,20 +269,21 @@ final class MonitorWindowController: NSWindowController {
         settingsTitle.textColor = .secondaryLabelColor
         mainStack.addArrangedSubview(settingsTitle)
         
+        saveCheckbox.target = self
+        saveCheckbox.action = #selector(toggleSaving)
+
         // Save Folder Row
         let folderRow = NSStackView()
         folderRow.orientation = .horizontal
         folderRow.spacing = 8
         folderRow.alignment = .centerY
         
-        let folderLabel = NSTextField(labelWithString: "Save:")
-        folderLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        folderRow.addArrangedSubview(folderLabel)
+        folderRow.addArrangedSubview(saveCheckbox)
         
         savePathField.isEditable = false
         savePathField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         savePathField.translatesAutoresizingMaskIntoConstraints = false
-        savePathField.widthAnchor.constraint(equalToConstant: 380).isActive = true
+        savePathField.widthAnchor.constraint(equalToConstant: 230).isActive = true
         folderRow.addArrangedSubview(savePathField)
         
         let browseButton = NSButton(title: "Choose...", target: self, action: #selector(chooseFolderClicked))
@@ -399,6 +401,8 @@ final class MonitorWindowController: NSWindowController {
     func refreshSettingsValues() {
         let prefs = PreferencesManager.shared
         savePathField.stringValue = prefs.saveFolderPath
+        saveCheckbox.state = prefs.saveLocally ? .on : .off
+        clipboardCheckbox.isEnabled = prefs.saveLocally
         clipboardCheckbox.state = prefs.copyToClipboard ? .on : .off
         floatingPreviewCheckbox.state = prefs.showFloatingPreview ? .on : .off
         spokenFeedbackCheckbox.state = prefs.spokenFeedback ? .on : .off
@@ -453,13 +457,8 @@ final class MonitorWindowController: NSWindowController {
 
     func showCaptureResult(_ result: Result<String, Error>, target: CaptureTarget) {
         switch result {
-        case .success(let path):
-            let filename = (path as NSString).lastPathComponent
-            let df = DateFormatter()
-            df.dateFormat = "HH:mm:ss"
-            let time = df.string(from: Date())
-            let clipMsg = PreferencesManager.shared.copyToClipboard ? " (📋 Copied)" : ""
-            lastActionLabel.stringValue = "Last: \(target.description) - \(filename) at \(time)\(clipMsg)"
+        case .success(let message):
+            lastActionLabel.stringValue = "Last: \(target.description) — \(message)"
         case .failure(let error):
             lastActionLabel.stringValue = "Capture failed: \(error.localizedDescription)"
         }
@@ -483,9 +482,14 @@ final class MonitorWindowController: NSWindowController {
         }
     }
     
+    @objc private func toggleSaving() {
+        PreferencesManager.shared.saveLocally = saveCheckbox.state == .on
+        refreshSettingsValues()
+    }
+
     @objc private func checkboxChanged() {
         let prefs = PreferencesManager.shared
-        prefs.copyToClipboard = clipboardCheckbox.state == .on
+        if prefs.saveLocally { prefs.copyToClipboard = clipboardCheckbox.state == .on }
         prefs.showFloatingPreview = floatingPreviewCheckbox.state == .on
         prefs.spokenFeedback = spokenFeedbackCheckbox.state == .on
         prefs.playShutterSound = shutterSoundCheckbox.state == .on

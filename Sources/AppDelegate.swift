@@ -92,6 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggleListeningMenuItem.target = self
         menu.addItem(toggleListeningMenuItem)
         
+        let saveItem = NSMenuItem(title: "Save Screenshots Locally", action: #selector(toggleSaving), keyEquivalent: "")
+        saveItem.target = self
+        menu.addItem(saveItem)
+
         clipboardMenuItem = NSMenuItem(title: "📋 Copy to Clipboard", action: #selector(toggleClipboard), keyEquivalent: "")
         clipboardMenuItem.target = self
         clipboardMenuItem.state = PreferencesManager.shared.copyToClipboard ? .on : .off
@@ -241,6 +245,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         speech.toggleListening()
     }
     
+    @objc private func toggleSaving() {
+        PreferencesManager.shared.saveLocally.toggle()
+        monitor?.refreshSettingsValues()
+    }
+
     @objc private func toggleClipboard() {
         let prefs = PreferencesManager.shared
         prefs.copyToClipboard.toggle()
@@ -279,5 +288,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func quitApp() {
         SpeechRecognizer.shared.stopListening()
         NSApplication.shared.terminate(nil)
+    }
+}
+
+
+extension AppDelegate: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleSaving) { item.state = PreferencesManager.shared.saveLocally ? .on : .off }
+        if item === clipboardMenuItem {
+            item.state = PreferencesManager.shared.copyToClipboard ? .on : .off
+            return PreferencesManager.shared.saveLocally
+        }
+        return true
     }
 }

@@ -32,7 +32,6 @@ final class ScreenshotManager {
     
     private let speechSynthesizer = AVSpeechSynthesizer()
     private let captureQueue = DispatchQueue(label: "com.voiceshot.captureQueue", qos: .userInitiated)
-    private let selectionQueue = DispatchQueue(label: "com.voiceshot.selectionQueue", qos: .userInitiated)
     private var flashWindows: [NSWindow] = []
     private var requestedScreenRecording = false
     
@@ -181,26 +180,33 @@ final class ScreenshotManager {
                 break
             }
             
-            let folder = self.resolveOutputFolder()
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-            let timestamp = dateFormatter.string(from: Date())
-            let baseName = "Screenshot \(timestamp)\(targetLabel)"
-            var targetPath = (folder as NSString).appendingPathComponent("\(baseName).png")
-            
-            var counter = 1
-            while FileManager.default.fileExists(atPath: targetPath) {
-                targetPath = (folder as NSString).appendingPathComponent("\(baseName) (\(counter)).png")
-                counter += 1
+            let targetPath: String?
+            if prefs.saveLocally {
+                let folder = self.resolveOutputFolder()
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+                let timestamp = dateFormatter.string(from: Date())
+                let baseName = "Screenshot \(timestamp)\(targetLabel)"
+                var candidate = (folder as NSString).appendingPathComponent("\(baseName).png")
+
+                var counter = 1
+                while FileManager.default.fileExists(atPath: candidate) {
+                    candidate = (folder as NSString).appendingPathComponent("\(baseName) (\(counter)).png")
+                    counter += 1
+                }
+
+                targetPath = candidate
+            } else {
+                targetPath = nil
             }
-            
+
             if !prefs.playShutterSound {
                 arguments.append("-x")
             }
             if prefs.includeCursor && target != .allDisplays && target != .interactiveArea {
                 arguments.append("-C")
             }
-            arguments.append(targetPath)
+            arguments.append(targetPath ?? "-c")
             
             // Execute /usr/sbin/screencapture
             let process = Process()
@@ -215,26 +221,36 @@ final class ScreenshotManager {
                     self.dismissFlash()
                     WindowManager.shared.hideBadgesForCapture()
                 }
+                let previousClipboard = targetPath == nil ? NSPasteboard.general.changeCount : nil
                 try process.run()
                 let errData = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
                 
-                if process.terminationStatus == 0 && FileManager.default.fileExists(atPath: targetPath) {
+                let image: NSImage?
+                if process.terminationStatus != 0 {
+                    image = nil
+                } else if let targetPath {
+                    image = NSImage(contentsOfFile: targetPath)
+                } else if previousClipboard != NSPasteboard.general.changeCount {
+                    image = NSImage(pasteboard: .general)
+                } else {
+                    image = nil
+                }
+
+                if let image {
                     if prefs.flashScreen && target != .interactiveArea { self.flashScreens() }
-                    if target == .extractText {
-                        self.performTextExtraction(from: targetPath)
-                    } else {
-                        let copied = self.copyToClipboard(filePath: targetPath)
-                        self.notifyUser(path: targetPath, targetDescription: targetDetail, copiedToClipboard: copied)
-                    }
-                    
-                    self.speakFeedback("\(targetDetail) captured")
-                    
                     DispatchQueue.main.async {
-                        FloatingPreviewController.shared.show(filePath: targetPath, title: targetDetail)
+                        FloatingPreviewController.shared.show(image: image, filePath: targetPath, title: targetDetail)
                     }
-                    
-                    completion(.success(targetPath))
+                    if target == .extractText {
+                        self.performTextExtraction(from: image, completion: completion)
+                    } else {
+                        let copied = targetPath == nil || (prefs.copyToClipboard && self.copyToClipboard(image: image, path: targetPath))
+                        let message = targetPath.map { "Saved to \($0)" + (copied ? " and copied to clipboard" : "") } ?? "Copied to clipboard"
+                        self.notifyUser(message: message, targetDescription: targetDetail)
+                        self.speakFeedback("\(targetDetail) captured")
+                        completion(.success(message))
+                    }
                 } else {
                     let errMsg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let description: String
@@ -256,50 +272,44 @@ final class ScreenshotManager {
             }
         }
         
-        let queue = target == .interactiveArea ? selectionQueue : captureQueue
         if captureDelay > 0.05 {
-            queue.asyncAfter(deadline: .now() + captureDelay) {
+            captureQueue.asyncAfter(deadline: .now() + captureDelay) {
                 performCapture()
             }
         } else {
-            queue.async {
+            captureQueue.async {
                 performCapture()
             }
         }
     }
     
     /// Extracts text from captured image and copies text directly to clipboard
-    func performTextExtraction(from filePath: String) {
-        let fileURL = URL(fileURLWithPath: filePath)
-        let request = VNRecognizeTextRequest { [weak self] req, error in
-            guard let observations = req.results as? [VNRecognizedTextObservation], error == nil else {
-                return
-            }
-            
-            let strings = observations.compactMap { $0.topCandidates(1).first?.string }
-            let fullText = strings.joined(separator: "\n")
-            
-            DispatchQueue.main.async {
-                if !fullText.isEmpty {
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.setString(fullText, forType: .string)
-                    
-                    let wordCount = fullText.split(separator: " ").count
-                    self?.speakFeedback("Text copied to clipboard")
-                    self?.notifyOCRSuccess(wordCount: wordCount, preview: fullText)
-                }
-            }
-        }
+    private func performTextExtraction(from image: NSImage, completion: @escaping (Result<String, Error>) -> Void) {
+        let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
-        
-        let handler = VNImageRequestHandler(url: fileURL, options: [:])
-        DispatchQueue.global(qos: .userInitiated).async {
-            try? handler.perform([request])
+        do {
+            guard let pixels = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                throw NSError(domain: "VoiceShot", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not read the captured image."])
+            }
+            try VNImageRequestHandler(cgImage: pixels).perform([request])
+            let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+            guard !text.isEmpty else {
+                throw NSError(domain: "VoiceShot", code: 3, userInfo: [NSLocalizedDescriptionKey: "No text found in the capture."])
+            }
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            guard pb.setString(text, forType: .string) else {
+                throw NSError(domain: "VoiceShot", code: 4, userInfo: [NSLocalizedDescriptionKey: "Could not copy text to the clipboard."])
+            }
+            speakFeedback("Text copied to clipboard")
+            notifyOCRSuccess(wordCount: text.split(whereSeparator: { $0.isWhitespace }).count, preview: text)
+            completion(.success("Text copied to clipboard"))
+        } catch {
+            completion(.failure(error))
         }
     }
-    
+
     private func notifyOCRSuccess(wordCount: Int, preview: String) {
         guard PreferencesManager.shared.showNotification else { return }
         let snippet = String(preview.prefix(80)).replacingOccurrences(of: "\n", with: " ")
@@ -322,47 +332,23 @@ final class ScreenshotManager {
     
     /// Copies image and file URL to macOS general pasteboard
     @discardableResult
-    func copyToClipboard(filePath: String) -> Bool {
-        guard PreferencesManager.shared.copyToClipboard else { return false }
-        
-        let url = URL(fileURLWithPath: filePath)
-        if let image = NSImage(contentsOfFile: filePath) {
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            return pb.writeObjects([image, url as NSURL])
-        }
-        return false
+    func copyToClipboard(image: NSImage, path: String?) -> Bool {
+        var objects: [NSPasteboardWriting] = [image]
+        if let path { objects.append(URL(fileURLWithPath: path) as NSURL) }
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.writeObjects(objects)
     }
-    
-    private func notifyUser(path: String, targetDescription: String, copiedToClipboard: Bool) {
-        guard PreferencesManager.shared.showNotification else { return }
-        
-        let filename = (path as NSString).lastPathComponent
-        let folderName = ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent
-        let clipNotice = copiedToClipboard ? " (Copied to Clipboard!)" : ""
-        
-        if Bundle.main.bundleIdentifier != nil {
-            let content = UNMutableNotificationContent()
-            content.title = "VoiceShot Captured 📸"
-            content.subtitle = "\(targetDescription)\(copiedToClipboard ? " (Copied to Clipboard)" : "")"
-            content.body = "Saved to \(folderName): \(filename)"
-            content.sound = .default
-            
-            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-            UNUserNotificationCenter.current().add(request) { error in
-                if error != nil {
-                    let script = "display notification \"Saved to \(folderName)\(clipNotice)\" with title \"VoiceShot 📸\" subtitle \"\(targetDescription)\""
-                    var errorInfo: NSDictionary?
-                    NSAppleScript(source: script)?.executeAndReturnError(&errorInfo)
-                }
-            }
-        } else {
-            let script = "display notification \"Saved to \(folderName)\(clipNotice)\" with title \"VoiceShot 📸\" subtitle \"\(targetDescription)\""
-            var errorInfo: NSDictionary?
-            NSAppleScript(source: script)?.executeAndReturnError(&errorInfo)
-        }
+
+    private func notifyUser(message: String, targetDescription: String) {
+        guard PreferencesManager.shared.showNotification, Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "VoiceShot captured \(targetDescription)"
+        content.body = message
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
-    
+
     func openScreenshotsFolder() {
         let folder = resolveOutputFolder()
         let url = URL(fileURLWithPath: folder)

@@ -39,7 +39,7 @@
 "screenshot text" ➔ Transcribes on-screen text with Vision OCR
 ```
 
-Every capture is immediately written to the macOS **pasteboard**, ready to paste (`Cmd + V`) straight into Slack, Discord, Messages, Figma, Google Docs, or Jira.
+By default, screenshots go directly to the macOS **pasteboard**, ready to paste (`Cmd + V`) straight into Slack, Discord, Messages, Figma, Google Docs, or Jira.
 
 ---
 
@@ -48,8 +48,8 @@ Every capture is immediately written to the macOS **pasteboard**, ready to paste
 - 🔢 **Dynamic Window Numbering**: Indexes visible windows from front to back `[ 1 ]`, `[ 2 ]`, `[ 3 ]`, `[ 4 ]`, `[ 5 ]...`.
 - 🏷️ **On-Screen Badge Overlays**: Say `"show numbers"` or press `Cmd + Shift + N` to flash floating badge overlays on the top-left of each window.
 - ⚡ **Rapid Shorthand Voice Triggers**: Say “snap one,” “snap two,” or any window number through ten. The Live Monitor lists these commands as `snap1` through `snap10`.
-- 📋 **Zero-Click Clipboard Copying**: Every capture is placed on `NSPasteboard` automatically (both bitmap image and file URL).
-- 🖼️ **CleanShot-Style Floating Preview**: A floating thumbnail card appears in the bottom-right corner with 1-click pills:
+- 📋 **Zero-Click Clipboard Copying**: The image goes directly to the clipboard. Turn on **Save Screenshots Locally** in the menu or Preferences to also keep a PNG.
+- 🖼️ **CleanShot-Style Floating Preview**: The thumbnail lets you copy the image again. Saved captures also offer Preview, Finder, and Trash:
   - `📋 Copy`: Re-copy to clipboard
   - `✏️ Preview`: Open directly in macOS Preview app
   - `📂 Finder`: Reveal file in Finder
@@ -81,10 +81,11 @@ VoiceShot numbers application windows from front to back across connected displa
 
 ### Visual Window Badges
 
-Say **"show numbers"** or **"show window numbers"** (or press `Cmd + Shift + N`):
+Say **“tags,” “nums,” “badges,”** or **“labels”** to show window numbers. Each also works with “show,” as in **“show tags.”** You can still say **“show numbers”** or press `Cmd + Shift + N`.
+
 1. VoiceShot places a badge on the exposed part of each numbered window.
 2. The number assignments last four seconds, so you can capture more than one numbered window.
-3. Badge overlays hide before capture.
+3. Say the badge number on its own, such as “three,” to capture that window. You can also say “snap three” at any time.
 
 ---
 
@@ -96,7 +97,7 @@ Say **"show numbers"** or **"show window numbers"** (or press `Cmd + Shift + N`)
 | **`"snap2"`** / **`"screenshot 2"`** | Captures Window #2 | Window directly behind #1 |
 | **`"snap3"`** / **`"screenshot 3"`** | Captures Window #3 | Third visible window |
 | **`"snap4"`** through **`"snap10"`** | Captures the window with that number | Subsequent visible windows |
-| **`"show numbers"`** / **`"show windows"`** | Flashes visual number badges on screen | All open windows |
+| **`"tags"`** / **`"nums"`** / **`"show tags"`** / **`"show numbers"`** | Shows numbered badges | Visible windows |
 | **`"screenshot Safari"`** *(or Chrome, Slack, etc.)* | Captures that application's front window | Named Application |
 | **`"display 1"`** / **`"screen 1"`** | Captures full primary display | Display 1 |
 | **`"display 2"`** / **`"screen 2"`** | Captures external secondary monitor | Display 2 |
@@ -167,6 +168,7 @@ Click the camera icon (`📸`) in the macOS menu bar to access quick controls:
 | **Capture All Displays** | 📸 Capture All Displays | `Cmd + Shift + S` |
 | **Capture Selection Area** | ✂️ Capture Selection Area | `Cmd + Shift + 4` |
 | **Extract Text (OCR)** | 📝 Extract Text (OCR) | `Cmd + Shift + T` |
+| **Toggle Local Saving** | Save Screenshots Locally (off by default) | — |
 | **Toggle Clipboard Copy** | 📋 Copy to Clipboard | — |
 | **Toggle Floating Preview** | 🖼️ Floating Preview | — |
 | **Toggle Voice Feedback** | 🗣️ Voice Feedback | — |
@@ -180,7 +182,7 @@ Click the camera icon (`📸`) in the macOS menu bar to access quick controls:
 Open the Preferences window (`Cmd + ,`) to customize:
 
 - **Save Location**: Change destination to `~/Desktop`, `~/Pictures/Screenshots`, or any custom folder.
-- **Copy to Clipboard**: Toggle whether screenshots are automatically written to `NSPasteboard` (Default: `ON`).
+- **Copy to Clipboard**: When local saving is enabled, choose whether to also copy the image.
 - **Floating Preview Thumbnail**: Toggle CleanShot-style floating preview in bottom-right corner (Default: `ON`).
 - **Spoken Voice Confirmation**: Toggle audio speech feedback like *"Window 1 captured"* (Default: `OFF`).
 - **Camera Shutter Sound**: Toggle native camera audio effect (Default: `ON`).

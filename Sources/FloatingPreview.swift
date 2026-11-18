@@ -7,6 +7,7 @@ final class FloatingPreviewController: NSWindowController {
     private var dismissTimer: Timer?
     private var currentFilePath: String?
     
+    private var fileButtons: [NSButton] = []
     private let imageView = NSImageView()
     private let filenameLabel = NSTextField(labelWithString: "")
     
@@ -86,6 +87,7 @@ final class FloatingPreviewController: NSWindowController {
         let openBtn = createActionButton(title: "Preview", symbol: "pencil.tip", action: #selector(openClicked))
         let finderBtn = createActionButton(title: "Finder", symbol: "folder", action: #selector(finderClicked))
         let trashBtn = createActionButton(title: "Trash", symbol: "trash", action: #selector(trashClicked))
+        fileButtons = [openBtn, finderBtn, trashBtn]
         trashBtn.contentTintColor = .systemRed
         
         btnStack.addArrangedSubview(copyBtn)
@@ -114,15 +116,14 @@ final class FloatingPreviewController: NSWindowController {
         return btn
     }
     
-    func show(filePath: String, title: String) {
+    func show(image: NSImage, filePath: String?, title: String) {
         guard PreferencesManager.shared.showFloatingPreview else { return }
         
         currentFilePath = filePath
         filenameLabel.stringValue = title
         
-        if let img = NSImage(contentsOfFile: filePath) {
-            imageView.image = img
-        }
+        imageView.image = image
+        fileButtons.forEach { $0.isHidden = filePath == nil }
         
         guard let window = window, let screen = NSScreen.main else { return }
         
@@ -161,8 +162,8 @@ final class FloatingPreviewController: NSWindowController {
     }
     
     @objc private func copyClicked() {
-        guard let path = currentFilePath else { return }
-        ScreenshotManager.shared.copyToClipboard(filePath: path)
+        guard let image = imageView.image else { return }
+        ScreenshotManager.shared.copyToClipboard(image: image, path: currentFilePath)
         dismissPreview()
     }
     

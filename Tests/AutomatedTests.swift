@@ -22,6 +22,18 @@ struct VoiceShotTests {
         print("🧪 Running VoiceShot Numbered Window & 'snap1' Test Suite")
         print("========================================")
 
+        let suite = "VoiceShotTests." + UUID().uuidString
+        let isolatedDefaults = UserDefaults(suiteName: suite)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suite) }
+        let prefs = PreferencesManager(defaults: isolatedDefaults)
+        assertTest(!prefs.saveLocally && prefs.copyToClipboard, "New installs capture to clipboard only")
+        prefs.copyToClipboard = false
+        assertTest(prefs.copyToClipboard, "A previous copy preference cannot discard clipboard-only captures")
+        prefs.saveLocally = true
+        assertTest(PreferencesManager(defaults: isolatedDefaults).saveLocally && !prefs.copyToClipboard, "Save-only opt-in persists")
+        prefs.saveLocally = false
+        assertTest(prefs.copyToClipboard, "Turning local saving off restores clipboard capture")
+
         // TEST 1: Window Number & Snap Tokens Parser
         let testCases: [(spoken: String, expectedTarget: CaptureTarget, desc: String)] = [
             // "screenshot N" -> Window N
@@ -82,6 +94,31 @@ struct VoiceShotTests {
         for phrase in ["ss1", "ss 2", "s3", "snap0", "snap 0", "snap11", "snap 11", "snapshot"] {
             assertTest(SpeechRecognizer.parseTarget(spoken: phrase) == nil, "\(phrase) is ignored")
         }
+
+        for n in 1...10 {
+            var selection = SpeechRecognizer.CommandStream()
+            assertTest(selection.commands(in: "\(n)", settled: true).isEmpty, "Ignore standalone \(n) outside selection")
+            assertTest(selection.commands(in: "\(n)", settled: true, badgesActive: true).map(\.target) == [.window(n)], "Select badge \(n)")
+        }
+        for phrase in ["show numbers three", "show me the numbers. Tree.", "show numbers then three"] {
+            var selection = SpeechRecognizer.CommandStream()
+            assertTest(selection.commands(in: phrase, settled: true).map(\.target) == [.showWindowNumbers, .window(3)], phrase)
+        }
+        let hints = VoiceCommandDictionary.recognitionHints(triggerPhrases: [])
+        for word in ["nums", "tags", "badges", "labels"] {
+            for alias in [word, "show " + word] {
+                var stream = SpeechRecognizer.CommandStream()
+                assertTest(hints.contains(alias), "Recognition hint for \(alias)")
+                assertTest(stream.commands(in: alias, settled: false).map(\.target) == [.showWindowNumbers], "Show badges immediately for \(alias)")
+                assertTest(stream.commands(in: alias + " two", settled: true, badgesActive: true).map(\.target) == [.window(2)], "Select two after \(alias) without repeating badges")
+            }
+        }
+        for phrase in ["the price tags fell", "read the labels", "those badges are blue"] {
+            var stream = SpeechRecognizer.CommandStream()
+            assertTest(stream.commands(in: phrase, settled: true).isEmpty, "Ignore ordinary speech: \(phrase)")
+        }
+        var chatter = SpeechRecognizer.CommandStream()
+        assertTest(chatter.commands(in: "okay show the numbers", settled: true).map(\.target) == [.showWindowNumbers], "Recover badge command after chatter")
 
         let pronunciationCases: [(String, CaptureTarget)] = [
             ("snup won", .window(1)), ("snap too", .window(2)), ("snapp tree", .window(3)),

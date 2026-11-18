@@ -167,6 +167,8 @@ final class WindowManager {
         }
     }
 
+    var hasBadgeTargets: Bool { !badgeTargets.isEmpty }
+
     /// Hides badge overlays while preserving number assignments until the badge session expires.
     @discardableResult
     func hideBadgesForCapture() -> [WindowItem] {

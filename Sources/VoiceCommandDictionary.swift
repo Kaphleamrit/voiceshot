@@ -29,6 +29,9 @@ struct VoiceCommandDictionary {
     private static let seconds: Set<String> = ["second", "seconds", "sec", "secs", "secons", "sekonds"]
     private static let separators = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789").inverted
 
+    private static let shortBadgeCommands = ["nums", "tags", "badges", "labels",
+                                             "show nums", "show tags", "show badges", "show labels"]
+
     private static let builtInEntries: [String: Entry] = {
         var entries: [String: Entry] = [:]
         func add(_ phrases: [String], target: CaptureTarget, trigger: String? = nil) {
@@ -39,7 +42,8 @@ struct VoiceCommandDictionary {
 
         add(["snap"], target: .allDisplays)
         add(["show numbers", "show window numbers", "show me numbers", "show me window numbers",
-             "show windows", "number windows", "numbers"],
+             "show the numbers", "show me the numbers", "show number", "show window number",
+             "window numbers", "number the windows", "show windows", "number windows", "numbers"] + shortBadgeCommands,
             target: .showWindowNumbers)
         add(["screenshot text", "take screenshot text", "take a screenshot text",
              "copy text", "extract text", "read text", "read screen", "snap text"],
@@ -50,7 +54,7 @@ struct VoiceCommandDictionary {
         for (index, names) in numbers.enumerated() {
             let number = index + 1
             for value in [String(number)] + names {
-                add(["snap", "snap window", "screenshot", "screenshot window", "window",
+                add(["snap", "snap window", "screenshot", "screenshot window", "window", "number", "window number",
                      "take screenshot", "take a screenshot"].map { "\($0) \(value)" },
                     target: .window(number), trigger: "snap\(number)")
                 for prefix in ["display", "screen", "snap display", "snap screen", "screenshot display", "screenshot screen"] {
@@ -188,8 +192,10 @@ struct VoiceCommandDictionary {
     }
 
     static func recognitionHints(triggerPhrases: [String]) -> [String] {
-        let commands = ["show numbers", "show windows", "snap text", "snap area", "copy text", "screenshot"]
-        let numbered = (1...10).flatMap { ["snap \($0)", "snap\($0)"] }
+        let commands = ["show numbers", "show windows", "snap text", "snap area", "copy text", "screenshot"] + shortBadgeCommands
+        let numbered = numbers.enumerated().flatMap { index, names in
+            ["snap \(index + 1)", "snap\(index + 1)", "snap \(names[0])", "number \(names[0])"]
+        }
         var seen: Set<String> = []
         return Array((commands + numbered + triggerPhrases + Self.apps.map { "snap \($0)" })
             .filter { seen.insert($0.lowercased()).inserted }.prefix(100))
@@ -207,16 +213,20 @@ struct VoiceCommandDictionary {
         return (words.startIndex + 1...end).contains { match(words[..<$0]) != nil }
     }
 
-    // An unrelated partial transcription should not block an explicit numbered snap for the rest of the session.
-    func numberedSnapAfterChatter(_ words: ArraySlice<String>) -> Int? {
-        let earliest = max(words.startIndex + 3, words.endIndex - maxWordCount - 3)
+    static func badgeSelection(_ words: ArraySlice<String>) -> Command? {
+        guard words.count == 1, let word = words.first, let number = numberValues[word] else { return nil }
+        return (.window(number), 0, "snap\(number)")
+    }
+
+    func numberCommandAfterChatter(_ words: ArraySlice<String>) -> Int? {
+        let earliest = max(words.startIndex + 1, words.endIndex - maxWordCount - 3)
         guard earliest < words.endIndex - 1 else { return nil }
         for index in (earliest..<(words.endIndex - 1)).reversed() {
             let target = words[index + 1]
-            guard Self.compactPrefixes.contains(words[index]), target != "to", target != "for",
-                  !words[..<index].suffix(4).contains(where: { ["not", "never", "don", "dont"].contains($0) }),
-                  let command = match(words[index...]), case .window = command.target else { continue }
-            return index
+            guard !words[..<index].suffix(4).contains(where: { ["not", "never", "don", "dont"].contains($0) }) else { continue }
+            if words[index] == "show", match(words[index...])?.target == .showWindowNumbers { return index }
+            if Self.compactPrefixes.contains(words[index]), target != "to", target != "for",
+               let command = match(words[index...]), case .window = command.target { return index }
         }
         return nil
     }

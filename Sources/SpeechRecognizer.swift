@@ -234,10 +234,11 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
 
                 if let result {
                     let transcription = result.bestTranscription.formattedString
-                    if transcription != self.lastPartialTranscript {
+                    let commandText = Self.separateUtterances(result.bestTranscription)
+                    if commandText != self.lastPartialTranscript {
                         DispatchQueue.main.async { self.onTranscriptChanged?(transcription) }
                     }
-                    self.processTranscription(transcription, isFinal: result.isFinal)
+                    self.processTranscription(commandText, isFinal: result.isFinal)
                 }
                 if error != nil {
                     self.settleWorkItem?.cancel()
@@ -250,13 +251,31 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         }
     }
 
+    // Speech can accumulate unrelated speech and the next command without punctuation.
+    private static func separateUtterances(_ transcription: SFTranscription) -> String {
+        let text = transcription.formattedString
+        let segments = transcription.segments
+        var pauses: [Int] = []
+        for (previous, next) in zip(segments, segments.dropFirst()) {
+            if previous.duration > 0, next.timestamp - previous.timestamp - previous.duration >= 0.8 {
+                pauses.append(next.substringRange.location)
+            }
+        }
+        guard !pauses.isEmpty else { return text }
+        let separated = NSMutableString(string: text)
+        for offset in pauses.reversed() where offset < separated.length {
+            separated.insert(".", at: offset)
+        }
+        return separated as String
+    }
+
     private func handleSessionEnded(retryAfter: TimeInterval = 0.3) {
         guard isIntentionallyListening else { return }
         
         restartWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self, self.isIntentionallyListening else { return }
-            self.startRecognitionTask()
+            self.startAudioPipeline()
         }
         restartWorkItem = workItem
         queue.asyncAfter(deadline: .now() + retryAfter, execute: workItem)
@@ -284,7 +303,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             pending.map { $0.target == .allDisplays ? 0.25 : 0.10 }
         }
 
-        mutating func commands(in transcript: String, settled: Bool) -> [Command] {
+        mutating func commands(in transcript: String, settled: Bool, badgesActive: Bool = false) -> [Command] {
             pending = nil
             let sentences = transcript.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
             var words: [String] = []
@@ -298,16 +317,18 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             guard processedWordCount < words.count else { return [] }
 
             var commands: [Command] = []
+            var selectingBadge = badgesActive
             var start = processedWordCount
             var remainingBoundaries = boundaries.drop(while: { $0 <= start })
             while start < words.count {
                 let phraseEnd = remainingBoundaries.first ?? words.count
                 let phrase = words[start..<phraseEnd]
-                if let command = dictionary.match(phrase) {
+                if let command = dictionary.match(phrase) ?? (selectingBadge ? VoiceCommandDictionary.badgeSelection(phrase) : nil) {
                     pending = command
                     pendingWordCount = phraseEnd
                     if settled || phraseEnd < words.count || command.target == .showWindowNumbers ||
                         (command.delay > 0 && VoiceCommandDictionary.endsWithSeconds(phrase.last)) {
+                        if command.target == .showWindowNumbers { selectingBadge = true }
                         commands.append(contentsOf: flush())
                         start = phraseEnd
                         if remainingBoundaries.first == phraseEnd { remainingBoundaries = remainingBoundaries.dropFirst() }
@@ -323,9 +344,10 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                     for boundary in (start + 1...end).reversed() {
                         let word = words[boundary]
                         let explicitSeparator = words[boundary - 1] == "then" || words[boundary - 1] == "and"
-                        guard explicitSeparator || dictionary.canStartCommand(word),
+                        guard explicitSeparator || dictionary.canStartCommand(word) || VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil,
                               let command = dictionary.match(words[start..<boundary]),
-                              dictionary.hasCommandPrefix(words[boundary..<phraseEnd]) else { continue }
+                              (dictionary.hasCommandPrefix(words[boundary..<phraseEnd]) ||
+                               (command.target == .showWindowNumbers && VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil)) else { continue }
                         if command.target == .allDisplays, ["window", "screen", "display"].contains(word),
                            !explicitSeparator { continue }
                         next = (boundary, command)
@@ -333,10 +355,11 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                     }
                 }
                 if let (boundary, command) = next {
+                    if command.target == .showWindowNumbers { selectingBadge = true }
                     commands.append(command)
                     start = boundary
                     processedWordCount = boundary
-                } else if let commandStart = dictionary.numberedSnapAfterChatter(phrase) {
+                } else if let commandStart = dictionary.numberCommandAfterChatter(phrase) {
                     start = commandStart
                 } else if remainingBoundaries.first != nil {
                     start = phraseEnd
@@ -362,7 +385,8 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         lastPartialTranscript = text
         settleWorkItem?.cancel()
         settleWorkItem = nil
-        emit(commandStream.commands(in: text, settled: isFinal))
+        let badgesActive = DispatchQueue.main.sync { WindowManager.shared.hasBadgeTargets }
+        emit(commandStream.commands(in: text, settled: isFinal, badgesActive: badgesActive))
         guard let interval = commandStream.settleInterval else { return }
 
         let workItem = DispatchWorkItem { [weak self] in

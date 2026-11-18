@@ -3,7 +3,7 @@ import Foundation
 final class PreferencesManager {
     static let shared = PreferencesManager()
     
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     
     private enum Keys {
         static let saveFolderPath = "voiceshot.saveFolderPath"
@@ -19,7 +19,8 @@ final class PreferencesManager {
         static let isListeningEnabled = "voiceshot.isListeningEnabled"
     }
     
-    private init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         registerDefaults()
     }
     
@@ -72,8 +73,13 @@ final class PreferencesManager {
         set { defaults.set(newValue, forKey: Keys.includeCursor) }
     }
     
+    var saveLocally: Bool {
+        get { defaults.bool(forKey: "voiceshot.saveLocally") }
+        set { defaults.set(newValue, forKey: "voiceshot.saveLocally") }
+    }
+
     var copyToClipboard: Bool {
-        get { defaults.bool(forKey: Keys.copyToClipboard) }
+        get { !saveLocally || defaults.bool(forKey: Keys.copyToClipboard) }
         set { defaults.set(newValue, forKey: Keys.copyToClipboard) }
     }
     
