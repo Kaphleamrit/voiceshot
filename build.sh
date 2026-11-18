@@ -13,7 +13,7 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 if [ "${1:-}" = "--if-needed" ] && [ -x "$MACOS_DIR/$APP_NAME" ]; then
     needs_build=false
-    for source in build.sh Info.plist Sources/*.swift Resources/AppIcon.icns; do
+    for source in build.sh scripts/fetch-sparkle.sh Info.plist Sources/*.swift Resources/AppIcon.icns; do
         if [ "$source" -nt "$MACOS_DIR/$APP_NAME" ]; then
             needs_build=true
             break
@@ -37,11 +37,14 @@ else
     SDK_PATH="$(xcrun --show-sdk-path)"
 fi
 echo "Using SDK: $SDK_PATH"
+SPARKLE_DIR="$(bash scripts/fetch-sparkle.sh)"
 
 # Clean previous build
 rm -rf "$BUNDLE_DIR"
 mkdir -p "$MACOS_DIR"
 mkdir -p "$RESOURCES_DIR"
+mkdir -p "$CONTENTS_DIR/Frameworks"
+ditto "$SPARKLE_DIR/Sparkle.framework" "$CONTENTS_DIR/Frameworks/Sparkle.framework"
 
 # Compile Swift sources
 echo "Compiling Swift source files..."
@@ -49,6 +52,8 @@ export SDKROOT="$SDK_PATH"
 swiftc -O \
     -sdk "$SDK_PATH" \
     -target arm64-apple-macosx12.0 \
+    -F "$SPARKLE_DIR" -framework Sparkle \
+    -Xlinker -rpath -Xlinker '@executable_path/../Frameworks' \
     Sources/*.swift \
     -o "$MACOS_DIR/$APP_NAME"
 
@@ -64,7 +69,7 @@ fi
 
 # Ad-hoc code sign bundle for macOS arm64
 echo "Code signing bundle..."
-codesign --force --deep --sign - "$BUNDLE_DIR"
+codesign --force --sign - "$BUNDLE_DIR"
 
 echo "========================================"
 echo "  ✅ Build succeeded!"

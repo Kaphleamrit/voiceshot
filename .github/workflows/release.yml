@@ -1,0 +1,57 @@
+name: Publish VoiceShot release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: github.repository == 'Kaphleamrit/voiceshot'
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Configure the release version and verification key
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable version tag such as v1.1.0."
+            exit 1
+          fi
+
+          version="${GITHUB_REF_NAME#v}"
+          public_key="$(printf '%s\n' "$SPARKLE_PRIVATE_KEY" | swift scripts/update-public-key.swift)"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $version" Info.plist
+          /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $public_key" Info.plist
+      - name: Build release archive
+        run: |
+          ./build.sh
+          codesign --verify --deep --strict VoiceShot.app
+          mkdir -p release
+          ditto -c -k --sequesterRsrc --keepParent VoiceShot.app release/VoiceShot-macOS-arm64.zip
+      - name: Sign the update archive and appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          sparkle_dir="$(bash scripts/fetch-sparkle.sh)"
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" | "$sparkle_dir/bin/generate_appcast" \
+            --ed-key-file - --maximum-deltas 0 \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
+            release
+          test -s release/appcast.xml
+      - name: Publish on GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/VoiceShot-macOS-arm64.zip release/appcast.xml \
+            --verify-tag --generate-notes --latest

@@ -26,6 +26,18 @@
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>SUFeedURL</key>
+    <string>https://github.com/Kaphleamrit/voiceshot/releases/latest/download/appcast.xml</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>21600</integer>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>SURequireSignedFeed</key>
+    <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>VoiceShot needs microphone access to listen for the &quot;take screenshot&quot; voice command.</string>
     <key>NSSpeechRecognitionUsageDescription</key>

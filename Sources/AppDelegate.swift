@@ -9,10 +9,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previewMenuItem: NSMenuItem!
     private var spokenMenuItem: NSMenuItem!
     private weak var monitor: MonitorWindowController?
+    @MainActor private lazy var updateChecker = UpdateChecker()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         setupEventHandlers()
+        updateChecker.start()
         
         // Start speech listening
         if PreferencesManager.shared.isListeningEnabled {
@@ -20,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    private func setupStatusItem() {
+    @MainActor private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         if let button = statusItem.button {
@@ -114,6 +116,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let prefsItem = NSMenuItem(title: "⚙️ Preferences & Live Monitor...", action: #selector(showMonitorWindow), keyEquivalent: ",")
         prefsItem.target = self
         menu.addItem(prefsItem)
+
+        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(UpdateChecker.checkNow), keyEquivalent: "")
+        updateItem.target = updateChecker
+        menu.addItem(updateItem)
+        menu.addItem(updateChecker.automaticChecksItem)
         
         menu.addItem(NSMenuItem.separator())
         

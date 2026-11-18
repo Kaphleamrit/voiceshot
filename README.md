@@ -113,7 +113,13 @@ VoiceShot checks recognized phrases against a local command dictionary. It can i
 
 ## 🚀 Quick Start & Installation
 
-### 1. Launch Directly
+### Install from GitHub Releases
+
+On an Apple Silicon Mac with macOS 12 or later, download `VoiceShot-macOS-arm64.zip`, unzip it, and move `VoiceShot.app` into Applications. Release builds are ad-hoc signed and may require approval in macOS Privacy & Security on first launch. [VoiceShot releases](https://github.com/Kaphleamrit/voiceshot/releases), [Apple’s first-launch instructions](https://support.apple.com/en-us/102445)
+
+After installing the first release that includes the updater, click **Update** in the popup. VoiceShot downloads and verifies the release, installs it, and relaunches automatically. **Later** dismisses the popup, and **Don’t ask me again** turns off automatic checks. You can still use **Check for Updates…** or turn **Automatically Check for Updates** back on from the menu bar.
+
+### Launch from source
 
 Run the launcher script to start VoiceShot with the **Live Monitor & Preferences** dashboard:
 
@@ -122,7 +128,7 @@ cd /Users/kaphley/.gemini/antigravity/scratch/voiceshot
 ./start.sh --monitor
 ```
 
-### 2. Install Permanently into Applications
+### Install from source
 
 To install VoiceShot into your macOS Applications folder so it appears in Spotlight (`Cmd + Space` ➔ `VoiceShot`):
 
@@ -240,7 +246,7 @@ cd /Users/kaphley/.gemini/antigravity/scratch/voiceshot
 
 ### Running Automated Test Suite
 
-The automated suite checks window discovery, shorthand parsing, and the transcript processor used by live recognition. Run it in a macOS desktop session with at least one eligible window open.
+The automated suite checks window discovery and voice parsing. Run it in a macOS desktop session with at least one eligible window open.
 
 ```bash
 cd /Users/kaphley/.gemini/antigravity/scratch/voiceshot
@@ -254,6 +260,24 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swiftc \
   Tests/AutomatedTests.swift \
   -o /tmp/run_tests && /tmp/run_tests
 ```
+
+### Publishing a release
+
+Set up the Sparkle signing key once. Run the commands below on a Mac with the GitHub CLI authenticated for this repository. Back up the signing key securely and use the same key for subsequent releases.
+
+```bash
+(
+  set -e
+  sparkle_dir="$(bash scripts/fetch-sparkle.sh)"
+  "$sparkle_dir/bin/generate_keys" --account voiceshot
+  key_file="$(mktemp)"
+  trap 'rm -f "$key_file"' EXIT
+  "$sparkle_dir/bin/generate_keys" --account voiceshot -x "$key_file"
+  gh secret set SPARKLE_PRIVATE_KEY --repo Kaphleamrit/voiceshot < "$key_file"
+)
+```
+
+Push a new stable version tag such as `v1.1.0` on the commit you want to release. GitHub Actions embeds the public key and version, builds the Apple Silicon ZIP, signs the ZIP and update feed, and publishes both to GitHub Releases. Local source builds have the update menu disabled until a Sparkle public key is configured. [Sparkle publishing guide](https://sparkle-project.org/documentation/publishing/)
 
 ---
 
