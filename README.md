@@ -115,7 +115,7 @@ VoiceShot checks recognized phrases against a local command dictionary. It can i
 
 ### Install from GitHub Releases
 
-On an Apple Silicon Mac with macOS 12 or later, download `VoiceShot-macOS-arm64.zip`, unzip it, and move `VoiceShot.app` into Applications. Release builds are ad-hoc signed and may require approval in macOS Privacy & Security on first launch. [VoiceShot releases](https://github.com/Kaphleamrit/voiceshot/releases), [Apple’s first-launch instructions](https://support.apple.com/en-us/102445)
+On an Apple Silicon Mac with macOS 12 or later, open the disk image and drag the **VoiceShot** icon onto **Applications**. Eject the disk image, then open VoiceShot from Applications. Release builds are ad-hoc signed and may require approval in macOS Privacy & Security on first launch. [Download VoiceShot for Mac](https://github.com/Kaphleamrit/voiceshot/releases/latest/download/VoiceShot-macOS-arm64.dmg), [Apple’s first-launch instructions](https://support.apple.com/en-us/102445)
 
 After installing the first release that includes the updater, click **Update** in the popup. VoiceShot downloads and verifies the release, installs it, and relaunches automatically. **Later** dismisses the popup, and **Don’t ask me again** turns off automatic checks. You can still use **Check for Updates…** or turn **Automatically Check for Updates** back on from the menu bar.
 
@@ -277,7 +277,7 @@ Set up the Sparkle signing key once. Run the commands below on a Mac with the Gi
 )
 ```
 
-Push a new stable version tag such as `v1.1.0` on the commit you want to release. GitHub Actions embeds the public key and version, builds the Apple Silicon ZIP, signs the ZIP and update feed, and publishes both to GitHub Releases. Local source builds have the update menu disabled until a Sparkle public key is configured. [Sparkle publishing guide](https://sparkle-project.org/documentation/publishing/)
+Push a new stable version tag such as `v1.2.0` on the commit you want to release. GitHub Actions publishes the drag-to-Applications disk image for first installs alongside the signed ZIP and feed for Sparkle updates. Local source builds have the update menu disabled until a Sparkle public key is configured. [Sparkle publishing guide](https://sparkle-project.org/documentation/publishing/)
 
 ---
 

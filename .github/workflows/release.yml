@@ -58,9 +58,12 @@ jobs:
             --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/" \
             release
           test -s release/appcast.xml
+      - name: Build the drag-to-Applications installer
+        run: bash scripts/package-dmg.sh VoiceShot.app release/VoiceShot-macOS-arm64.dmg
       - name: Publish on GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$RELEASE_TAG" release/VoiceShot-macOS-arm64.zip release/appcast.xml \
-            --verify-tag --generate-notes --latest
+          gh release create "$RELEASE_TAG" release/VoiceShot-macOS-arm64.dmg release/VoiceShot-macOS-arm64.zip release/appcast.xml \
+            --verify-tag --generate-notes --latest \
+            --notes "Installing for the first time? [Download the Mac installer](https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/VoiceShot-macOS-arm64.dmg), open it, and drag VoiceShot into Applications."
