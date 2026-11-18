@@ -19,7 +19,7 @@ final class WindowManager {
     private init() {}
     
     /// Queries Quartz Window Services for on-screen application windows and numbers them 1, 2, 3, 4, 5...
-    func getVisibleWindows() -> [WindowItem] {
+    func getVisibleWindows(limit: Int = 10) -> [WindowItem] {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
             return []
@@ -45,7 +45,7 @@ final class WindowManager {
             
             result.append(WindowItem(id: id, number: number, appName: owner, title: title, bounds: bounds))
             number += 1
-            if number > 10 { break } // Support up to top 10 windows
+            if result.count >= limit { break }
         }
         return result
     }
@@ -59,10 +59,14 @@ final class WindowManager {
     /// Looks up window by application name (e.g. "Safari", "Slack", "Chrome")
     func window(forApp query: String) -> WindowItem? {
         let clean = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        let windows = getVisibleWindows()
-        return windows.first {
-            $0.appName.lowercased().contains(clean) || (!clean.isEmpty && $0.title.lowercased().contains(clean))
-        }
+        guard !clean.isEmpty else { return nil }
+        let alternateNames = [
+            "chrome": ["google chrome"],
+            "code": ["visual studio code"],
+            "zoom": ["zoom.us", "zoom workplace"]
+        ]
+        let names = [clean] + (alternateNames[clean] ?? [])
+        return getVisibleWindows(limit: .max).first { names.contains($0.appName.lowercased()) }
     }
     
     // MARK: - Visual Window Number Overlays

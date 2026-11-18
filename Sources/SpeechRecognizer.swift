@@ -37,6 +37,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     private var isIntentionallyListening = false
     private var commandStream = CommandStream()
     private var settleWorkItem: DispatchWorkItem?
+    private var lastPartialTranscript: String?
     private var restartWorkItem: DispatchWorkItem?
     private let queue = DispatchQueue(label: "com.voiceshot.speechQueue")
     
@@ -211,10 +212,13 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         
         settleWorkItem?.cancel()
         settleWorkItem = nil
-        commandStream = CommandStream()
+        let triggerPhrases = PreferencesManager.shared.triggerPhrases
+        commandStream = CommandStream(triggerPhrases: triggerPhrases)
+        lastPartialTranscript = nil
         
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        request.contextualStrings = VoiceCommandDictionary.recognitionHints(triggerPhrases: triggerPhrases)
         self.recognitionRequest = request
         
         currentState = .listening
@@ -249,176 +253,93 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         queue.asyncAfter(deadline: .now() + 0.3, execute: workItem)
     }
     
-    // MARK: - Voice Command Parsing
+    // MARK: - Voice Command Processing
 
-    typealias Command = (target: CaptureTarget, delay: Double, trigger: String)
+    typealias Command = VoiceCommandDictionary.Command
 
-    private static let wordToNumber: [String: Int] = [
-        "1": 1, "one": 1,
-        "2": 2, "two": 2,
-        "3": 3, "three": 3,
-        "4": 4, "four": 4,
-        "5": 5, "five": 5,
-        "6": 6, "six": 6,
-        "7": 7, "seven": 7,
-        "8": 8, "eight": 8,
-        "9": 9, "nine": 9,
-        "10": 10, "ten": 10
-    ]
-
-    private static func words(in spoken: String) -> [String] {
-        spoken.lowercased()
-            .replacingOccurrences(of: "[^a-z0-9]", with: " ", options: .regularExpression)
-            .split(separator: " ")
-            .flatMap { word -> [String] in
-                // Give compact and spaced transcriptions the same positions in the stream.
-                if word.hasPrefix("snap"), let number = wordToNumber[String(word.dropFirst(4))] {
-                    return ["snap", String(number)]
-                }
-                return [String(word)]
-            }
+    static func parseTarget(spoken: String, triggerPhrases: [String] = PreferencesManager.shared.triggerPhrases) -> Command? {
+        VoiceCommandDictionary(triggerPhrases: triggerPhrases).match(VoiceCommandDictionary.words(in: spoken)[...])
     }
-
-    static func parseTarget(spoken: String) -> Command? {
-        parseTarget(words: words(in: spoken)[...])
-    }
-
-    private static func parseTarget(words: ArraySlice<String>) -> Command? {
-        // Check countdown: "in 3 seconds", "in 5 sec"
-        var delaySeconds: Double = 0.0
-        for i in words.indices {
-            if words[i] == "in" && i + 1 < words.endIndex {
-                if let num = wordToNumber[words[i + 1]] {
-                    if i + 2 < words.endIndex && (words[i + 2].hasPrefix("sec")) {
-                        delaySeconds = Double(num)
-                    } else if i + 1 == words.endIndex - 1 {
-                        delaySeconds = Double(num)
-                    }
-                }
-            }
-        }
-        
-        let joined = words.joined(separator: " ")
-        
-        // 0. Show Window Numbers / Badges
-        let badgeTriggers = ["show numbers", "show window numbers", "show windows", "number windows"]
-        for bt in badgeTriggers {
-            if joined.contains(bt) {
-                return (.showWindowNumbers, 0.0, bt)
-            }
-        }
-        
-        if joined == "numbers" { return (.showWindowNumbers, 0.0, "numbers") }
-
-        // 1. OCR Text Extraction ("screenshot text", "copy text", "extract text")
-        let ocrTriggers = ["screenshot text", "copy text", "extract text", "read text", "read screen", "snap text"]
-        for ocr in ocrTriggers {
-            if joined.contains(ocr) {
-                return (.extractText, delaySeconds, ocr)
-            }
-        }
-        
-        // 2. Interactive Selection Area ("screenshot area", "crop screenshot", "snap area")
-        let areaTriggers = ["screenshot area", "screenshot selection", "crop screenshot", "select area", "crop screen", "snap area"]
-        for area in areaTriggers {
-            if joined.contains(area) {
-                return (.interactiveArea, delaySeconds, area)
-            }
-        }
-        
-        // 3. Explicit "display N" / "screen N"
-        for i in words.indices {
-            if (words[i] == "display" || words[i] == "screen") && i + 1 < words.endIndex {
-                if let num = wordToNumber[words[i + 1]] {
-                    return (.display(num), delaySeconds, "\(words[i]) \(words[i + 1])")
-                }
-            }
-        }
-        
-        // Numbered windows, including compact snaps after tokenization.
-        for i in words.indices {
-            let word = words[i]
-            let isPrefix = word == "snap" || word == "screenshot" || word == "window"
-                || (word == "shot" && i > words.startIndex && words[i - 1] == "screen")
-            guard isPrefix, i + 1 < words.endIndex else { continue }
-            let hasWindowPrefix = (word == "snap" || word == "screenshot") && words[i + 1] == "window"
-            let numberIndex = hasWindowPrefix ? i + 2 : i + 1
-            guard numberIndex < words.endIndex, let number = wordToNumber[words[numberIndex]] else { continue }
-            return (.window(number), delaySeconds, "snap\(number)")
-        }
-
-        // 6. Named Application window: "snap <app>" or "screenshot <app>"
-        let knownApps = [
-            "safari", "chrome", "slack", "terminal", "code", "cursor",
-            "discord", "finder", "notes", "mail", "messages", "music",
-            "spotify", "xcode", "preview", "pages", "numbers", "keynote",
-            "telegram", "zoom", "notion", "figma", "arc", "firefox"
-        ]
-        for app in knownApps {
-            if joined.contains("snap \(app)") || joined.contains("screenshot \(app)") || joined.contains("take screenshot \(app)") || joined.contains("capture \(app)") {
-                return (.app(app), delaySeconds, "snap \(app)")
-            }
-        }
-        
-        // 7. General triggers without numbers (All Displays)
-        let generalTriggers = PreferencesManager.shared.triggerPhrases.map {
-            $0.lowercased()
-                .replacingOccurrences(of: "[^a-z0-9\\s]", with: " ", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        
-        for trigger in generalTriggers where !trigger.isEmpty {
-            if trigger != "snap", " \(joined) ".contains(" \(trigger) ") {
-                return (.allDisplays, delaySeconds, trigger)
-            }
-        }
-        
-        if words.last == "snap" || joined == "snap please" || (joined.hasPrefix("snap in ") && delaySeconds > 0) {
-            return (.allDisplays, delaySeconds, "snap")
-        }
-
-        return nil
-    }
-    
-    // MARK: - Stream Processing
 
     struct CommandStream {
+        private let dictionary: VoiceCommandDictionary
         private var processedWordCount = 0
+        private var pending: Command?
+        private var pendingWordCount = 0
+
+        init(triggerPhrases: [String] = PreferencesManager.shared.triggerPhrases) {
+            dictionary = VoiceCommandDictionary(triggerPhrases: triggerPhrases)
+        }
+
+        var settleInterval: TimeInterval? {
+            pending.map { $0.target == .allDisplays ? 0.35 : 0.20 }
+        }
 
         mutating func commands(in transcript: String, settled: Bool) -> [Command] {
-            let words = SpeechRecognizer.words(in: transcript)
+            pending = nil
+            let words = VoiceCommandDictionary.words(in: transcript)
             guard processedWordCount < words.count else { return [] }
 
             var commands: [Command] = []
             var start = processedWordCount
-            for index in words.indices.dropFirst(start) where words[index] == "snap" && index > start {
-                if let command = SpeechRecognizer.parseTarget(words: words[start..<index]) {
-                    commands.append(command)
+            while start < words.count {
+                if let command = dictionary.match(words[start...]) {
+                    pending = command
+                    pendingWordCount = words.count
+                    if settled || command.target == .showWindowNumbers ||
+                        (command.delay > 0 && VoiceCommandDictionary.endsWithSeconds(words.last)) {
+                        commands.append(contentsOf: flush())
+                    }
+                    break
                 }
-                start = index
-            }
-            processedWordCount = start
-            if settled, let command = SpeechRecognizer.parseTarget(words: words[start...]) {
+
+                // A following command establishes the previous command's boundary.
+                let end = min(words.count - 1, start + dictionary.maxWordCount + 6)
+                guard end > start else { break }
+                var next: (Int, Command)?
+                for boundary in (start + 1...end).reversed() {
+                    let word = words[boundary]
+                    let explicitSeparator = words[boundary - 1] == "then" || words[boundary - 1] == "and"
+                    guard explicitSeparator || dictionary.canStartCommand(word),
+                          let command = dictionary.match(words[start..<boundary]),
+                          dictionary.hasCommandPrefix(words[boundary...]) else { continue }
+                    if command.target == .allDisplays, ["window", "screen", "display"].contains(word),
+                       !explicitSeparator {
+                        continue
+                    }
+                    next = (boundary, command)
+                    break
+                }
+                guard let (boundary, command) = next else { break }
                 commands.append(command)
-                processedWordCount = words.count
+                start = boundary
+                processedWordCount = boundary
             }
             return commands
+        }
+
+        mutating func flush() -> [Command] {
+            guard let command = pending else { return [] }
+            pending = nil
+            processedWordCount = pendingWordCount
+            return [command]
         }
     }
 
     private func processTranscription(_ text: String, isFinal: Bool) {
+        guard isFinal || text != lastPartialTranscript else { return }
+        lastPartialTranscript = text
         settleWorkItem?.cancel()
         settleWorkItem = nil
         emit(commandStream.commands(in: text, settled: isFinal))
-        guard !isFinal else { return }
+        guard let interval = commandStream.settleInterval else { return }
 
-        // Give a partial phrase time to acquire a number or a countdown.
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            self.emit(self.commandStream.commands(in: text, settled: true))
+            self.emit(self.commandStream.flush())
         }
         settleWorkItem = workItem
-        queue.asyncAfter(deadline: .now() + 0.45, execute: workItem)
+        queue.asyncAfter(deadline: .now() + interval, execute: workItem)
     }
 
     private func emit(_ commands: [Command]) {

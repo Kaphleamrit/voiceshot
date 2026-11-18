@@ -120,17 +120,6 @@ final class ScreenshotManager {
         let performCapture = { [weak self] in
             guard let self = self else { return }
             
-            // Visual flash (skip for interactive crosshair mode)
-            if prefs.flashScreen && target != .interactiveArea {
-                self.flashScreens()
-            }
-            
-            let folder = self.resolveOutputFolder()
-            
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-            let timestamp = dateFormatter.string(from: Date())
-            
             var targetLabel = ""
             var targetDetail = target.description
             var arguments: [String] = []
@@ -157,8 +146,9 @@ final class ScreenshotManager {
                     targetDetail = "\(win.appName) Window"
                     arguments.append(contentsOf: ["-l", "\(win.id)"])
                 } else {
-                    targetLabel = " - \(appName.capitalized)"
-                    targetDetail = "\(appName.capitalized) (App Not Found - Captured Main Display)"
+                    let message = "No visible window for \(appName.capitalized)."
+                    completion(.failure(NSError(domain: "VoiceShot", code: 1, userInfo: [NSLocalizedDescriptionKey: message])))
+                    return
                 }
             case .interactiveArea:
                 targetLabel = " - Selection"
@@ -171,6 +161,13 @@ final class ScreenshotManager {
                 break
             }
             
+            if prefs.flashScreen && target != .interactiveArea {
+                self.flashScreens()
+            }
+            let folder = self.resolveOutputFolder()
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+            let timestamp = dateFormatter.string(from: Date())
             let baseName = "Screenshot \(timestamp)\(targetLabel)"
             var targetPath = (folder as NSString).appendingPathComponent("\(baseName).png")
             

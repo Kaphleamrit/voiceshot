@@ -107,6 +107,8 @@ Say **"show numbers"** or **"show window numbers"** (or press `Cmd + Shift + N`)
 
 Say “snap one” for `snap1`, “snap two” for `snap2`, and so on. If a window number is unavailable, say “show numbers” to see the current assignments.
 
+VoiceShot checks recognized phrases against a local command dictionary. It can interpret common sound-alikes such as “snap tree” and small transcription errors such as “snap Safary.” When nearby matches point to different actions, it waits for a clearer command.
+
 ---
 
 ## 🚀 Quick Start & Installation
@@ -215,7 +217,7 @@ voiceshot/
 ### Key Technical Implementations
 
 1. **Continuous Non-Stop Speech Pipeline (`SpeechRecognizer.swift`)**:
-   VoiceShot keeps `AVAudioEngine` running and tracks which words it has already handled in each recognition session. It treats `snap1`, `snap 1`, and `snap one` as the same command, and lets the trailing phrase settle before acting so the window number or countdown can come through.
+   VoiceShot gives macOS Speech a vocabulary of commands and app names. The local dictionary uses an exact lookup first and a precomputed index for nearby phrases. Badge commands and complete countdown instructions can act on a partial transcription. Other captures wait briefly for a target or countdown to come through.
 
 2. **On-Device Machine Vision OCR (`ScreenshotManager.swift`)**:
    Uses Apple's `VNRecognizeTextRequest` (`recognitionLevel = .accurate`, `usesLanguageCorrection = true`) to perform fast, 100% on-device text transcription directly from captured pixels.
@@ -247,6 +249,7 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swiftc \
   Sources/FloatingPreview.swift \
   Sources/WindowManager.swift \
   Sources/ScreenshotManager.swift \
+  Sources/VoiceCommandDictionary.swift \
   Sources/SpeechRecognizer.swift \
   Tests/AutomatedTests.swift \
   -o /tmp/run_tests && /tmp/run_tests
