@@ -1,6 +1,6 @@
 # VoiceShot Pro 🎙️📸
 
-> **Voice-activated screenshot utility for macOS.** Numbers your open windows and captures displays, apps, or cropped regions instantly with voice commands like **`"ss1"`**, **`"ss2"`**, or **`"screenshot 1"`**, automatically copying captures to your clipboard.
+> **Voice-activated screenshot utility for macOS.** Numbers your open windows and captures displays, apps, or cropped regions instantly with voice commands like **`"snap1"`**, **`"snap2"`**, or **`"screenshot 1"`**, automatically copying captures to your clipboard.
 
 ![macOS 12+](https://img.shields.io/badge/macOS-12.0%2B-blue?logo=apple)
 ![Swift](https://img.shields.io/badge/Swift-6.0-orange?logo=swift)
@@ -14,7 +14,7 @@
 
 - [Overview](#-overview)
 - [Key Features](#-key-features)
-- [Window Numbering System (`ss1`, `ss2`, `ss3`...)](#-window-numbering-system-ss1-ss2-ss3)
+- [Window Numbering System (`snap1`, `snap2`, `snap3`...)](#-window-numbering-system-snap1-snap2-snap3)
 - [Voice Commands Reference](#-voice-commands-reference)
 - [Quick Start & Installation](#-quick-start--installation)
 - [First-Time Permissions](#-first-time-permissions)
@@ -31,8 +31,8 @@
 **VoiceShot Pro** is an ultra-lightweight (~20MB RAM) native macOS menu bar app designed for power users, developers, presenters, and multitaskers. Instead of memorizing multi-key shortcuts or searching for windows, simply speak naturally:
 
 ```
-"ss1" ➔ Captures Window 1 & copies to clipboard
-"ss2" ➔ Captures Window 2 & copies to clipboard
+"snap1" ➔ Captures Window 1 & copies to clipboard
+"snap2" ➔ Captures Window 2 & copies to clipboard
 "show numbers" ➔ Flashes floating number badges on all open windows
 "screenshot Safari" ➔ Captures Safari's front window
 "screenshot area" ➔ Launches interactive selection crosshairs
@@ -47,7 +47,7 @@ Every capture is immediately written to the macOS **pasteboard**, ready to paste
 
 - 🔢 **Dynamic Window Numbering**: Indexes visible windows from front to back `[ 1 ]`, `[ 2 ]`, `[ 3 ]`, `[ 4 ]`, `[ 5 ]...`.
 - 🏷️ **On-Screen Badge Overlays**: Say `"show numbers"` or press `Cmd + Shift + N` to flash floating badge overlays on the top-left of each window.
-- ⚡ **Rapid Shorthand Voice Triggers**: Supports `"ss1"`, `"ss2"`, `"ss3"`, `"ss4"`, `"ss5"` (as well as `"screenshot 1"`, `"window 1"`).
+- ⚡ **Rapid Shorthand Voice Triggers**: Supports `"snap1"`, `"snap2"`, `"snap3"`, `"snap4"`, `"snap5"` (as well as `"screenshot 1"`, `"window 1"`).
 - 📋 **Zero-Click Clipboard Copying**: Every capture is placed on `NSPasteboard` automatically (both bitmap image and file URL).
 - 🖼️ **CleanShot-Style Floating Preview**: A floating thumbnail card appears in the bottom-right corner with 1-click pills:
   - `📋 Copy`: Re-copy to clipboard
@@ -63,7 +63,7 @@ Every capture is immediately written to the macOS **pasteboard**, ready to paste
 
 ---
 
-## 🔢 Window Numbering System (`ss1`, `ss2`, `ss3`...)
+## 🔢 Window Numbering System (`snap1`, `snap2`, `snap3`...)
 
 VoiceShot queries macOS Quartz Window Services (`CGWindowListCopyWindowInfo`) and indexes visible application windows in front-to-back z-order:
 
@@ -92,10 +92,10 @@ Say **"show numbers"** or **"show window numbers"** (or press `Cmd + Shift + N`)
 
 | Voice Command | Action Description | Target |
 | :--- | :--- | :--- |
-| **`"ss1"`** / **`"screenshot 1"`** | Captures Window #1 | Active frontmost window |
-| **`"ss2"`** / **`"screenshot 2"`** | Captures Window #2 | Window directly behind #1 |
-| **`"ss3"`** / **`"screenshot 3"`** | Captures Window #3 | Third visible window |
-| **`"ss4"`**, **`"ss5"`**... | Captures Window #4, #5, etc. | Subsequent windows (up to 10) |
+| **`"snap1"`** / **`"screenshot 1"`** | Captures Window #1 | Active frontmost window |
+| **`"snap2"`** / **`"screenshot 2"`** | Captures Window #2 | Window directly behind #1 |
+| **`"snap3"`** / **`"screenshot 3"`** | Captures Window #3 | Third visible window |
+| **`"snap4"`**, **`"snap5"`**... | Captures Window #4, #5, etc. | Subsequent windows (up to 10) |
 | **`"show numbers"`** / **`"show windows"`** | Flashes visual number badges on screen | All open windows |
 | **`"screenshot Safari"`** *(or Chrome, Slack, etc.)* | Captures that application's front window | Named Application |
 | **`"display 1"`** / **`"screen 1"`** | Captures full primary display | Display 1 |
@@ -105,7 +105,7 @@ Say **"show numbers"** or **"show window numbers"** (or press `Cmd + Shift + N`)
 | **`"screenshot in 3 seconds"`** | Waits for 3-second countdown before capture | All Displays |
 | **`"take screenshot"`** / **`"screenshot"`** | Full-screen capture across all monitors | All Displays |
 
-*(Phonetic short forms like `"ss 1"`, `"s1"`, `"s 1"`, or number words like `"screenshot one"`, `"screenshot two"` are all recognized.)*
+*(Number words like `"snap one"`, `"snap two"`, or `"screenshot one"`, `"screenshot two"` are also recognized.)*
 
 ---
 
@@ -151,9 +151,9 @@ Click the camera icon (`📸`) in the macOS menu bar to access quick controls:
 | Action | Menu Item | Global Shortcut |
 | :--- | :--- | :--- |
 | **Show Window Numbers** | 🏷️ Show Window Numbers On Screen | `Cmd + Shift + N` |
-| **Capture Window 1** | 🪟 Capture Window 1 (`ss1`) | `Cmd + Shift + 1` |
-| **Capture Window 2** | 🪟 Capture Window 2 (`ss2`) | `Cmd + Shift + 2` |
-| **Capture Window 3** | 🪟 Capture Window 3 (`ss3`) | `Cmd + Shift + 3` |
+| **Capture Window 1** | 🪟 Capture Window 1 (`snap1`) | `Cmd + Shift + 1` |
+| **Capture Window 2** | 🪟 Capture Window 2 (`snap2`) | `Cmd + Shift + 2` |
+| **Capture Window 3** | 🪟 Capture Window 3 (`snap3`) | `Cmd + Shift + 3` |
 | **Capture All Displays** | 📸 Capture All Displays | `Cmd + Shift + S` |
 | **Capture Selection Area** | ✂️ Capture Selection Area | `Cmd + Shift + 4` |
 | **Extract Text (OCR)** | 📝 Extract Text (OCR) | `Cmd + Shift + T` |
@@ -213,7 +213,7 @@ voiceshot/
 ### Key Technical Implementations
 
 1. **Continuous Non-Stop Speech Pipeline (`SpeechRecognizer.swift`)**:
-   Unlike simple recognition wrappers that teardown and restart CoreAudio upon hearing a word (which drops audio buffers and causes CoreAudio race conditions), VoiceShot runs `AVAudioEngine` continuously and tracks an incremental offset (`processedLength`). This allows you to say `"ss1"`, `"ss2"`, `"ss3"` back-to-back with zero audio latency and no jams.
+   Unlike simple recognition wrappers that teardown and restart CoreAudio upon hearing a word (which drops audio buffers and causes CoreAudio race conditions), VoiceShot runs `AVAudioEngine` continuously and tracks an incremental offset (`processedLength`). This allows you to say `"snap1"`, `"snap2"`, `"snap3"` back-to-back with zero audio latency and no jams.
 
 2. **On-Device Machine Vision OCR (`ScreenshotManager.swift`)**:
    Uses Apple's `VNRecognizeTextRequest` (`recognitionLevel = .accurate`, `usesLanguageCorrection = true`) to perform fast, 100% on-device text transcription directly from captured pixels.

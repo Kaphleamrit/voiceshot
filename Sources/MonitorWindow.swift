@@ -8,7 +8,7 @@ final class MonitorWindowController: NSWindowController {
     private let statusLabel = NSTextField(labelWithString: "Status: Initializing...")
     private let statusIndicator = NSView()
     private let audioLevelIndicator = NSProgressIndicator()
-    private let transcriptLabel = NSTextField(wrappingLabelWithString: "Commands: \"ss1\", \"ss2\", \"ss3\", \"screenshot 1\", \"screenshot Safari\", \"show numbers\"...")
+    private let transcriptLabel = NSTextField(wrappingLabelWithString: "Commands: \"snap1\", \"snap2\", \"snap3\", \"snap Safari\", \"show numbers\"...")
     private let lastActionLabel = NSTextField(labelWithString: "Last screenshot: None")
     
     private let toggleListeningButton = NSButton()
@@ -180,7 +180,7 @@ final class MonitorWindowController: NSWindowController {
         mapHeader.spacing = 10
         mapHeader.alignment = .centerY
         
-        let mapTitle = NSTextField(labelWithString: "NUMBERED OPEN WINDOWS (SAY \"ss1\", \"ss2\", \"ss3\"...)")
+        let mapTitle = NSTextField(labelWithString: "NUMBERED OPEN WINDOWS (SAY \"snap1\", \"snap2\", \"snap3\"...)")
         mapTitle.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         mapTitle.textColor = .secondaryLabelColor
         mapHeader.addArrangedSubview(mapTitle)

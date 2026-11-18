@@ -13,7 +13,7 @@ enum SpeechState: Equatable {
 
 final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     static let shared = SpeechRecognizer()
-    
+
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
@@ -244,7 +244,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         queue.asyncAfter(deadline: .now() + 0.3, execute: workItem)
     }
     
-    // MARK: - Advanced Multi-Feature Target Parser
+    // MARK: - Advanced Multi-Feature Target Parser (Supports snap1, snap2, snap3...)
     
     static func parseTarget(spoken: String) -> (matched: Bool, target: CaptureTarget, delay: Double, trigger: String)? {
         let lower = spoken.lowercased()
@@ -289,15 +289,15 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         }
         
         // 1. OCR Text Extraction ("screenshot text", "copy text", "extract text")
-        let ocrTriggers = ["screenshot text", "copy text", "extract text", "read text", "read screen"]
+        let ocrTriggers = ["screenshot text", "copy text", "extract text", "read text", "read screen", "snap text"]
         for ocr in ocrTriggers {
             if joined.contains(ocr) {
                 return (true, .extractText, delaySeconds, ocr)
             }
         }
         
-        // 2. Interactive Selection Area ("screenshot area", "crop screenshot")
-        let areaTriggers = ["screenshot area", "screenshot selection", "crop screenshot", "select area", "crop screen"]
+        // 2. Interactive Selection Area ("screenshot area", "crop screenshot", "snap area")
+        let areaTriggers = ["screenshot area", "screenshot selection", "crop screenshot", "select area", "crop screen", "snap area"]
         for area in areaTriggers {
             if joined.contains(area) {
                 return (true, .interactiveArea, delaySeconds, area)
@@ -313,33 +313,37 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             }
         }
         
-        // 4. Compact window tokens: "ss1", "ss2", "ss3", "ss4", "ss5", "s1", "s2"
+        // 4. Compact "snapN" tokens: "snap1", "snap2", "snap3", "snap4", "snap5"...
         for word in words {
-            if word.hasPrefix("ss") && word.count > 2 {
-                let numStr = String(word.dropFirst(2))
-                if let num = wordToNumber[numStr], num >= 1 && num <= 10 {
-                    return (true, .window(num), delaySeconds, word)
-                }
-            } else if word.hasPrefix("s") && word.count > 1 {
-                let numStr = String(word.dropFirst(1))
+            if word.hasPrefix("snap") && word.count > 4 {
+                let numStr = String(word.dropFirst(4))
                 if let num = wordToNumber[numStr], num >= 1 && num <= 10 {
                     return (true, .window(num), delaySeconds, word)
                 }
             }
         }
         
-        // 5. Multi-word: "ss 1", "ss 2", "screenshot 1", "screenshot 2", "window 1", "window 2"
+        // 5. Multi-word: "snap 1", "snap 2", "snap 3", "snap window 1", "screenshot 1", "window 1"
         for i in 0..<words.count {
             let w = words[i]
-            let isPrefix = (w == "ss" || w == "screenshot" || w == "window" || (w == "shot" && i > 0 && words[i-1] == "screen"))
+
+            // "snap window N" or "screenshot window N"
+            if (w == "snap" || w == "screenshot") && i + 2 < words.count && words[i+1] == "window" {
+                if let num = wordToNumber[words[i + 2]], num >= 1 && num <= 10 {
+                    return (true, .window(num), delaySeconds, "\(w) window \(words[i+2])")
+                }
+            }
+
+            // "snap N", "screenshot N", "window N"
+            let isPrefix = (w == "snap" || w == "screenshot" || w == "window" || (w == "shot" && i > 0 && words[i-1] == "screen"))
             if isPrefix && i + 1 < words.count {
                 if let num = wordToNumber[words[i + 1]], num >= 1 && num <= 10 {
                     return (true, .window(num), delaySeconds, "\(words[i]) \(words[i+1])")
                 }
             }
         }
-        
-        // 6. Named Application window: "screenshot <app>"
+
+        // 6. Named Application window: "snap <app>" or "screenshot <app>"
         let knownApps = [
             "safari", "chrome", "slack", "terminal", "code", "cursor",
             "discord", "finder", "notes", "mail", "messages", "music",
@@ -347,8 +351,8 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             "telegram", "zoom", "notion", "figma", "arc", "firefox"
         ]
         for app in knownApps {
-            if joined.contains("screenshot \(app)") || joined.contains("take screenshot \(app)") || joined.contains("capture \(app)") {
-                return (true, .app(app), delaySeconds, "screenshot \(app)")
+            if joined.contains("snap \(app)") || joined.contains("screenshot \(app)") || joined.contains("take screenshot \(app)") || joined.contains("capture \(app)") {
+                return (true, .app(app), delaySeconds, "snap \(app)")
             }
         }
         
@@ -365,6 +369,10 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             }
         }
         
+        if joined == "snap" || joined.hasPrefix("snap ") || joined.hasSuffix(" snap") {
+            return (true, .allDisplays, delaySeconds, "snap")
+        }
+
         return nil
     }
     

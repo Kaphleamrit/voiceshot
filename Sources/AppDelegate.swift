@@ -53,17 +53,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         
         // Manual capture actions
-        let captureW1Item = NSMenuItem(title: "🪟 Capture Window 1 (ss1)", action: #selector(captureWindow1Now), keyEquivalent: "1")
+        let captureW1Item = NSMenuItem(title: "🪟 Capture Window 1 (snap1)", action: #selector(captureWindow1Now), keyEquivalent: "1")
         captureW1Item.keyEquivalentModifierMask = [.command, .shift]
         captureW1Item.target = self
         menu.addItem(captureW1Item)
         
-        let captureW2Item = NSMenuItem(title: "🪟 Capture Window 2 (ss2)", action: #selector(captureWindow2Now), keyEquivalent: "2")
+        let captureW2Item = NSMenuItem(title: "🪟 Capture Window 2 (snap2)", action: #selector(captureWindow2Now), keyEquivalent: "2")
         captureW2Item.keyEquivalentModifierMask = [.command, .shift]
         captureW2Item.target = self
         menu.addItem(captureW2Item)
         
-        let captureW3Item = NSMenuItem(title: "🪟 Capture Window 3 (ss3)", action: #selector(captureWindow3Now), keyEquivalent: "3")
+        let captureW3Item = NSMenuItem(title: "🪟 Capture Window 3 (snap3)", action: #selector(captureWindow3Now), keyEquivalent: "3")
         captureW3Item.keyEquivalentModifierMask = [.command, .shift]
         captureW3Item.target = self
         menu.addItem(captureW3Item)

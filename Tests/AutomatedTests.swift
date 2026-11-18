@@ -18,10 +18,10 @@ struct VoiceShotTests {
 
     static func main() {
         print("========================================")
-        print("🧪 Running VoiceShot Numbered Window & 'ss1' Test Suite")
+        print("🧪 Running VoiceShot Numbered Window & 'snap1' Test Suite")
         print("========================================")
 
-        // TEST 1: Window Number & SS Tokens Parser
+        // TEST 1: Window Number & Snap Tokens Parser
         let testCases: [(spoken: String, expectedTarget: CaptureTarget, desc: String)] = [
             // "screenshot N" -> Window N
             ("screenshot 1", .window(1), "screenshot 1 -> Window 1"),
@@ -30,19 +30,17 @@ struct VoiceShotTests {
             ("screenshot 4", .window(4), "screenshot 4 -> Window 4"),
             ("screenshot 5", .window(5), "screenshot 5 -> Window 5"),
             
-            // "ssN" -> Window N
-            ("ss1", .window(1), "ss1 -> Window 1"),
-            ("ss2", .window(2), "ss2 -> Window 2"),
-            ("ss3", .window(3), "ss3 -> Window 3"),
-            ("ss4", .window(4), "ss4 -> Window 4"),
-            ("ss5", .window(5), "ss5 -> Window 5"),
+            // "snapN" -> Window N
+            ("snap1", .window(1), "snap1 -> Window 1"),
+            ("snap2", .window(2), "snap2 -> Window 2"),
+            ("snap3", .window(3), "snap3 -> Window 3"),
+            ("snap4", .window(4), "snap4 -> Window 4"),
+            ("snap5", .window(5), "snap5 -> Window 5"),
             
-            // Spaced "ss N" -> Window N
-            ("ss 1", .window(1), "ss 1 -> Window 1"),
-            ("ss 2", .window(2), "ss 2 -> Window 2"),
-            ("ss 3", .window(3), "ss 3 -> Window 3"),
-            ("s1", .window(1), "s1 -> Window 1"),
-            ("s2", .window(2), "s2 -> Window 2"),
+            // Spaced "snap N" -> Window N
+            ("snap 1", .window(1), "snap 1 -> Window 1"),
+            ("snap 2", .window(2), "snap 2 -> Window 2"),
+            ("snap 3", .window(3), "snap 3 -> Window 3"),
             
             // Explicit Display & Window
             ("display 1", .display(1), "display 1 -> Display 1"),
@@ -76,7 +74,7 @@ struct VoiceShotTests {
             assertTest(w2.number == 2, "Window #2 found: \(w2.appName) (ID: \(w2.id))")
         }
 
-        // TEST 3: Consecutive "ss1", "ss2", "ss3" Streaming Simulation
+        // TEST 3: Consecutive "snap1", "snap2", "snap3" Streaming Simulation
         var processedLength: Int = 0
         var firedTargets: [CaptureTarget] = []
         var lastTime = Date.distantPast
@@ -98,16 +96,16 @@ struct VoiceShotTests {
             }
         }
 
-        simulateSpeechChunk("ss1")
-        assertTest(firedTargets.count == 1 && firedTargets.last == .window(1), "Streaming 1: 'ss1' captured Window 1")
+        simulateSpeechChunk("snap1")
+        assertTest(firedTargets.count == 1 && firedTargets.last == .window(1), "Streaming 1: 'snap1' captured Window 1")
 
         Thread.sleep(forTimeInterval: 0.1)
-        simulateSpeechChunk("ss1 now ss2")
-        assertTest(firedTargets.count == 2 && firedTargets.last == .window(2), "Streaming 2: 'ss2' captured Window 2")
+        simulateSpeechChunk("snap1 now snap2")
+        assertTest(firedTargets.count == 2 && firedTargets.last == .window(2), "Streaming 2: 'snap2' captured Window 2")
 
         Thread.sleep(forTimeInterval: 0.1)
-        simulateSpeechChunk("ss1 now ss2 and ss3")
-        assertTest(firedTargets.count == 3 && firedTargets.last == .window(3), "Streaming 3: 'ss3' captured Window 3")
+        simulateSpeechChunk("snap1 now snap2 and snap3")
+        assertTest(firedTargets.count == 3 && firedTargets.last == .window(3), "Streaming 3: 'snap3' captured Window 3")
 
         print("========================================")
         print("📊 Results: \(passed) Passed, \(failed) Failed")
