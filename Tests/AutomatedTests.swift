@@ -123,12 +123,14 @@ struct VoiceShotTests {
         let hints = VoiceCommandDictionary.recognitionHints(triggerPhrases: [])
         assertTest(hints.contains("paste") && hints.contains("please paste"), "Speech recognition receives paste hints")
         for phrase in ["Past.", "passed", "paced", "pace", "pest", "piste", "baste", "based",
-                       "taste", "pastes", "paist", "payst", "payste", "pased", "paysed", "payced"] {
+                       "taste", "pastes", "paist", "payst", "payste", "pased", "paysed", "payced",
+                       "pissed", "pierced", "best", "test", "peast", "pist", "paete"] {
             let command = SpeechRecognizer.parseTarget(spoken: phrase)
             assertTest(command?.target == .paste && command?.trigger == "paste", "Paste sound-alike: \(phrase)")
         }
         for phrase in ["do not paste", "paste it here", "paste in two seconds", "do not baste",
-                       "in the past", "based on this", "taste the soup", "passed in two seconds"] {
+                       "in the past", "based on this", "taste the soup", "passed in two seconds",
+                       "run the test", "best of luck", "pierced the paper"] {
             assertTest(SpeechRecognizer.parseTarget(spoken: phrase) == nil, "Does not send a paste shortcut for: \(phrase)")
         }
         assertTest(hints.contains("extract text from one") && hints.contains("extract text from ten"),
@@ -282,6 +284,10 @@ struct VoiceShotTests {
         assertTest(stream.commands(in: "extract text from two then past", settled: true)
                     .map(\.target) == [.extractWindowText(2), .paste],
                    "An explicitly chained paste accepts a sound-alike")
+        stream = SpeechRecognizer.CommandStream()
+        assertTest(stream.commands(in: "pissed. pierced. best. test.", settled: true).map(\.target) ==
+                    [.paste, .paste, .paste, .paste],
+                   "Each separate paste sound-alike triggers once in a cumulative transcript")
         stream = SpeechRecognizer.CommandStream()
         assertTest(stream.commands(in: "extract text", settled: false).isEmpty && stream.settleInterval == 0.65,
                    "Bare OCR waits briefly for a window number")

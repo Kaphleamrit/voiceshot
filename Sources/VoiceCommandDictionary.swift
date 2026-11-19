@@ -30,7 +30,8 @@ struct VoiceCommandDictionary {
     private static let separators = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789").inverted
     static let pasteSoundAlikes = [
         "paced", "past", "passed", "pastes", "pace", "pest", "piste",
-        "baste", "based", "taste", "paist", "payst", "payste", "pased", "paysed", "payced"
+        "baste", "based", "taste", "paist", "payst", "payste", "pased", "paysed", "payced",
+        "pissed", "pierced", "best", "test", "peast", "pist", "paete"
     ]
 
     private static let bareBadgeCommands: Set<String> = ["numbers", "nums", "tags", "badges", "labels"]
