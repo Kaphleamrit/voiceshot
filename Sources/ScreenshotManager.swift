@@ -12,6 +12,7 @@ enum CaptureTarget: Equatable, CustomStringConvertible {
     case app(String)
     case interactiveArea
     case extractText
+    case extractWindowText(Int)
     case showWindowNumbers
     
     var description: String {
@@ -22,6 +23,7 @@ enum CaptureTarget: Equatable, CustomStringConvertible {
         case .app(let name): return "\(name.capitalized)"
         case .interactiveArea: return "Selection Area"
         case .extractText: return "Extract Text (OCR)"
+        case .extractWindowText(let n): return "Extract Text from Window \(n)"
         case .showWindowNumbers: return "Show Window Numbers"
         }
     }
@@ -134,6 +136,12 @@ final class ScreenshotManager {
             var targetLabel = ""
             var targetDetail = target.description
             var arguments: [String] = []
+            let extractsWindowText: Bool
+            if case .extractWindowText = target {
+                extractsWindowText = true
+            } else {
+                extractsWindowText = false
+            }
             
             switch target {
             case .allDisplays:
@@ -141,7 +149,7 @@ final class ScreenshotManager {
             case .display(let displayIndex):
                 targetLabel = " - Display \(displayIndex)"
                 arguments.append(contentsOf: ["-D", "\(displayIndex)"])
-            case .window(let windowIndex):
+            case .window(let windowIndex), .extractWindowText(let windowIndex):
                 let win: WindowItem?
                 if badgeTargets.isEmpty {
                     win = WindowManager.shared.window(forNumber: windowIndex)
@@ -181,7 +189,7 @@ final class ScreenshotManager {
             }
             
             let targetPath: String?
-            if prefs.saveLocally {
+            if prefs.saveLocally && !extractsWindowText {
                 let folder = self.resolveOutputFolder()
                 let dateFormatter = DateFormatter()
                 dateFormatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
@@ -200,13 +208,22 @@ final class ScreenshotManager {
                 targetPath = nil
             }
 
+            // Give OCR its own input file so the clipboard changes only when text is ready.
+            let temporaryCapture = extractsWindowText
+                ? FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+                : nil
+            defer {
+                if let temporaryCapture { try? FileManager.default.removeItem(at: temporaryCapture) }
+            }
+            let capturePath = temporaryCapture?.path ?? targetPath
+
             if !prefs.playShutterSound {
                 arguments.append("-x")
             }
             if prefs.includeCursor && target != .allDisplays && target != .interactiveArea {
                 arguments.append("-C")
             }
-            arguments.append(targetPath ?? "-c")
+            arguments.append(capturePath ?? "-c")
             
             // Execute /usr/sbin/screencapture
             let process = Process()
@@ -220,14 +237,14 @@ final class ScreenshotManager {
                 DispatchQueue.main.sync {
                     self.dismissFlash()
                     switch target {
-                    case .window, .app:
+                    case .window, .app, .extractWindowText:
                         // A window capture excludes overlays. Keep any badges requested since it was queued.
                         break
                     default:
                         WindowManager.shared.hideBadgesForCapture()
                     }
                 }
-                let previousClipboard = targetPath == nil ? NSPasteboard.general.changeCount : nil
+                let previousClipboard = capturePath == nil ? NSPasteboard.general.changeCount : nil
                 try process.run()
                 let errData = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
@@ -235,8 +252,8 @@ final class ScreenshotManager {
                 let image: NSImage?
                 if process.terminationStatus != 0 {
                     image = nil
-                } else if let targetPath {
-                    image = NSImage(contentsOfFile: targetPath)
+                } else if let capturePath {
+                    image = NSImage(contentsOfFile: capturePath)
                 } else if previousClipboard != NSPasteboard.general.changeCount {
                     image = NSImage(pasteboard: .general)
                 } else {
@@ -245,6 +262,10 @@ final class ScreenshotManager {
 
                 if let image {
                     if prefs.flashScreen && target != .interactiveArea { self.flashScreens() }
+                    if extractsWindowText {
+                        self.performTextExtraction(from: image, completion: completion)
+                        return
+                    }
                     DispatchQueue.main.async {
                         FloatingPreviewController.shared.show(image: image, filePath: targetPath, title: targetDetail)
                     }

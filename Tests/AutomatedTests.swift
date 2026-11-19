@@ -87,6 +87,11 @@ struct VoiceShotTests {
             ("snap Safari", .app("safari"), "snap Safari -> Safari"),
             ("snap Numbers", .app("numbers"), "snap Numbers -> Numbers"),
             ("snap text", .extractText, "snap text -> OCR"),
+            ("extract text", .extractText, "extract text -> OCR"),
+            ("extract text from 1", .extractWindowText(1), "extract text from 1 -> Window 1 OCR"),
+            ("extract text two", .extractWindowText(2), "extract text two -> Window 2 OCR"),
+            ("extract test from two", .extractWindowText(2), "Transcribed extract test -> Window 2 OCR"),
+            ("extract text from window ten", .extractWindowText(10), "extract text from window ten -> Window 10 OCR"),
             ("snap area", .interactiveArea, "snap area -> Selection Area")
         ]
 
@@ -115,6 +120,10 @@ struct VoiceShotTests {
             assertTest(selection.commands(in: phrase, settled: true).map(\.target) == [.showWindowNumbers, .window(3)], phrase)
         }
         let hints = VoiceCommandDictionary.recognitionHints(triggerPhrases: [])
+        assertTest(hints.contains("extract text from one") && hints.contains("extract text from ten"),
+                   "Speech recognition receives numbered text extraction hints")
+        assertTest(SpeechRecognizer.parseTarget(spoken: "extract text from eleven") == nil,
+                   "An unsupported OCR window number does not fall back to full-screen OCR")
         for word in ["numbers", "nums", "tags", "badges", "labels"] {
             for alias in [word, "show " + word] {
                 var stream = SpeechRecognizer.CommandStream()
@@ -241,6 +250,21 @@ struct VoiceShotTests {
 
         // Exercise the production stream processor with cumulative recognition results.
         var stream = SpeechRecognizer.CommandStream()
+        assertTest(stream.commands(in: "extract text", settled: false).isEmpty && stream.settleInterval == 0.65,
+                   "Bare OCR waits briefly for a window number")
+        assertTest(stream.commands(in: "extract text from", settled: false).isEmpty && stream.flush().isEmpty,
+                   "An incomplete window OCR command does not extract from the full screen")
+        assertTest(stream.commands(in: "extract text from one", settled: true, badgesActive: true)
+                    .map(\.target) == [.extractWindowText(1)],
+                   "A cumulative OCR command takes the target from numbered windows")
+        assertTest(stream.commands(in: "extract text from one. extract test two", settled: true)
+                    .map(\.target) == [.extractWindowText(2)],
+                   "The next numbered OCR command does not repeat the first")
+        stream = SpeechRecognizer.CommandStream()
+        assertTest(stream.commands(in: "there was some background speech extract text from two", settled: true)
+                    .map(\.target) == [.extractWindowText(2)],
+                   "Numbered OCR recovers after background speech")
+        stream = SpeechRecognizer.CommandStream()
         assertTest(stream.commands(in: "snap", settled: false).isEmpty,
                    "A partial snap does not capture all displays")
         assertTest(stream.commands(in: "snap one", settled: true).map(\.target) == [.window(1)],

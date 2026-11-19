@@ -103,10 +103,13 @@ Say **“tags,” “nums,” “badges,”** or **“labels”** to show window
 | **`"display 2"`** / **`"screen 2"`** | Captures external secondary monitor | Display 2 |
 | **`"screenshot area"`** / **`"crop screenshot"`** | Activates interactive drag-selection crosshair | Custom Crop Rect |
 | **`"screenshot text"`** / **`"copy text"`** | Extracts on-screen text via Vision OCR | Clipboard (as String) |
+| **`"extract text from one"`** / **`"extract text two"`** | Copies text from the numbered window | Clipboard (plain text) |
 | **`"screenshot in 3 seconds"`** | Waits for 3-second countdown before capture | All Displays |
 | **`"take screenshot"`** / **`"screenshot"`** | Full-screen capture across all monitors | All Displays |
 
 Say “snap one” for `snap1`, “snap two” for `snap2`, and so on. If a window number is unavailable, say “show numbers” to see the current assignments.
+
+Say “extract text from” followed by any window number from one to ten to copy just that window’s text. You can omit “from.”
 
 VoiceShot checks recognized phrases against a local command dictionary. It can interpret common sound-alikes such as “snap tree” and small transcription errors such as “snap Safary.” When nearby matches point to different actions, it waits for a clearer command.
 

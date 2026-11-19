@@ -55,6 +55,8 @@ struct VoiceCommandDictionary {
         for (index, names) in numbers.enumerated() {
             let number = index + 1
             for value in [String(number)] + names {
+                add(["extract text", "extract text from", "extract text window", "extract text from window"]
+                    .map { "\($0) \(value)" }, target: .extractWindowText(number), trigger: "extract text from \(number)")
                 add(["snap", "snap window", "screenshot", "screenshot window", "window", "number", "window number",
                      "take screenshot", "take a screenshot"].map { "\($0) \(value)" },
                     target: .window(number), trigger: "snap\(number)")
@@ -193,9 +195,11 @@ struct VoiceCommandDictionary {
     }
 
     static func recognitionHints(triggerPhrases: [String]) -> [String] {
-        let commands = ["numbers", "show numbers", "show windows", "snap text", "snap area", "copy text", "screenshot"] + shortBadgeCommands
+        let commands = ["numbers", "show numbers", "show windows", "snap text", "snap area", "copy text",
+                        "extract text", "screenshot"] + shortBadgeCommands
         let numbered = numbers.enumerated().flatMap { index, names in
-            ["snap \(index + 1)", "snap\(index + 1)", "snap \(names[0])", "number \(names[0])"]
+            ["snap \(index + 1)", "snap\(index + 1)", "snap \(names[0])", "number \(names[0])",
+             "extract text from \(names[0])"]
         }
         var seen: Set<String> = []
         return Array((commands + numbered + triggerPhrases + Self.apps.map { "snap \($0)" })
@@ -241,6 +245,8 @@ struct VoiceCommandDictionary {
             let target = words[index + 1]
             guard !words[..<index].suffix(4).contains(where: { ["not", "never", "don", "dont"].contains($0) }) else { continue }
             if words[index] == "show", match(words[index...])?.target == .showWindowNumbers { return index }
+            if words[index] == "extract", let command = match(words[index...]),
+               case .extractWindowText = command.target { return index }
             if Self.compactPrefixes.contains(words[index]), target != "to", target != "for",
                let command = match(words[index...]), case .window = command.target { return index }
         }

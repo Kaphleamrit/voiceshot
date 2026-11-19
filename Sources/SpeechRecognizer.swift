@@ -400,7 +400,12 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         }
 
         var settleInterval: TimeInterval? {
-            pending.map { $0.target == .allDisplays ? 0.25 : 0.10 }
+            guard let pending else { return nil }
+            switch pending.target {
+            case .allDisplays: return 0.25
+            case .extractText: return 0.65
+            default: return 0.10
+            }
         }
 
         mutating func commands(in transcript: String, settled: Bool, badgesActive: Bool = false) -> [Command] {
