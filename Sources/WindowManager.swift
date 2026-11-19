@@ -16,6 +16,9 @@ final class WindowManager {
     private var badgeWindows: [NSWindow] = []
     private var badgeTimer: Timer?
     private var badgeTargets: [WindowItem] = []
+    private var numberingTimer: Timer?
+    private var lastWindowIDs: [CGWindowID] = []
+    private var automaticBadgesPaused = false
 
     private init() {}
 
@@ -102,14 +105,39 @@ final class WindowManager {
 
     // MARK: - Visual Window Number Overlays
 
+    func startMonitoringWindowNumbers() {
+        guard numberingTimer == nil else { return }
+        lastWindowIDs = getVisibleWindows().map(\.id)
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.showBadgesIfNumberingChanged()
+        }
+        timer.tolerance = 0.1
+        numberingTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func showBadgesIfNumberingChanged() {
+        guard !automaticBadgesPaused, !hasBadgeTargets else { return }
+        let windows = getVisibleWindows()
+        let windowIDs = windows.map(\.id)
+        guard windowIDs != lastWindowIDs else { return }
+
+        lastWindowIDs = windowIDs
+        dismissBadges()
+        displayBadges(for: windows, duration: 1.25)
+    }
+
     /// Places badges on the exposed part of each numbered window.
     func showWindowBadges(duration: TimeInterval = 4.0) {
-        self.dismissBadges()
-
-        let windows = self.getVisibleWindows()
-        guard !windows.isEmpty else { return }
+        dismissBadges()
+        let windows = getVisibleWindows()
+        lastWindowIDs = windows.map(\.id)
         badgeTargets = windows
+        displayBadges(for: windows, duration: duration)
+    }
 
+    private func displayBadges(for windows: [WindowItem], duration: TimeInterval) {
+        guard !windows.isEmpty else { return }
         let mainScreenHeight = CGDisplayBounds(CGMainDisplayID()).height
 
         for item in windows {
@@ -161,13 +189,20 @@ final class WindowManager {
             self.badgeWindows.append(window)
         }
 
-        self.badgeTimer?.invalidate()
-        self.badgeTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: duration, repeats: false) { [weak self] _ in
             self?.dismissBadges()
         }
+        badgeTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     var hasBadgeTargets: Bool { !badgeTargets.isEmpty }
+
+    /// Full-screen and area captures need to keep automatic overlays hidden until the capture ends.
+    func setAutomaticBadgesPausedForCapture(_ paused: Bool) {
+        automaticBadgesPaused = paused
+        if paused { hideBadgesForCapture() }
+    }
 
     /// Hides badge overlays while preserving number assignments until the badge session expires.
     @discardableResult

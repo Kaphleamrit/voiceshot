@@ -312,8 +312,8 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                     }
                     let segments = result.bestTranscription.segments
                     if let first = segments.first, let last = segments.last,
-                       self.commandStream.beginFreshBadgeUtterance(commandText, start: first.timestamp,
-                                                                   end: last.timestamp + last.duration) {
+                       self.commandStream.beginFreshUtterance(commandText, start: first.timestamp,
+                                                              end: last.timestamp + last.duration) {
                         self.lastPartialTranscript = nil
                     }
                     self.processTranscription(commandText, isFinal: result.isFinal)
@@ -382,12 +382,13 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         private var lastAudioEnd: TimeInterval?
 
         // Speech may replace a previous utterance with identical text covering new audio.
-        mutating func beginFreshBadgeUtterance(_ text: String, start: TimeInterval, end: TimeInterval) -> Bool {
+        mutating func beginFreshUtterance(_ text: String, start: TimeInterval, end: TimeInterval) -> Bool {
             guard end > start else { return false }
             let previousEnd = lastAudioEnd
             lastAudioEnd = max(lastAudioEnd ?? end, end)
             guard let previousEnd, start >= previousEnd,
-                  dictionary.match(VoiceCommandDictionary.words(in: text)[...])?.target == .showWindowNumbers else {
+                  let target = dictionary.match(VoiceCommandDictionary.words(in: text)[...])?.target,
+                  target == .showWindowNumbers || target == .paste else {
                 return false
             }
             processedWordCount = 0
@@ -403,6 +404,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             guard let pending else { return nil }
             switch pending.target {
             case .allDisplays: return 0.25
+            case .paste: return 0.45
             case .extractText: return 0.65
             default: return 0.10
             }
@@ -462,6 +464,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                                canSkipToBadge) else { continue }
                         if command.target == .allDisplays, ["window", "screen", "display"].contains(word),
                            !explicitSeparator { continue }
+                        if command.target == .paste, !explicitSeparator { continue }
                         next = (boundary, command)
                         break
                     }

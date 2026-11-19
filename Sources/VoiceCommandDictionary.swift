@@ -42,6 +42,7 @@ struct VoiceCommandDictionary {
         }
 
         add(["snap"], target: .allDisplays)
+        add(["paste"], target: .paste)
         add(["show numbers", "show window numbers", "show me numbers", "show me window numbers",
              "show the numbers", "show me the numbers", "show number", "show window number",
              "window numbers", "number the windows", "show windows", "number windows", "numbers"] + shortBadgeCommands,
@@ -196,7 +197,7 @@ struct VoiceCommandDictionary {
 
     static func recognitionHints(triggerPhrases: [String]) -> [String] {
         let commands = ["numbers", "show numbers", "show windows", "snap text", "snap area", "copy text",
-                        "extract text", "screenshot"] + shortBadgeCommands
+                        "extract text", "screenshot", "paste"] + shortBadgeCommands
         let numbered = numbers.enumerated().flatMap { index, names in
             ["snap \(index + 1)", "snap\(index + 1)", "snap \(names[0])", "number \(names[0])",
              "extract text from \(names[0])"]
@@ -279,6 +280,7 @@ struct VoiceCommandDictionary {
 
         let phrase = words.joined(separator: " ")
         if let entry = Self.builtInIndex.phrases[phrase] ?? customIndex.phrases[phrase] {
+            if entry.target == .paste && delay > 0 { return nil }
             return (entry.target, entry.target == .showWindowNumbers ? 0 : delay, entry.trigger)
         }
 

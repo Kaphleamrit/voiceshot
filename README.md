@@ -81,6 +81,8 @@ VoiceShot numbers application windows from front to back across connected displa
 
 ### Visual Window Badges
 
+VoiceShot briefly shows the current window numbers whenever their assignments change.
+
 Say **“tags,” “nums,” “badges,”** or **“labels”** to show window numbers. Each also works with “show,” as in **“show tags.”** You can still say **“show numbers”** or press `Cmd + Shift + N`.
 
 1. VoiceShot places a badge on the exposed part of each numbered window.
@@ -104,6 +106,7 @@ Say **“tags,” “nums,” “badges,”** or **“labels”** to show window
 | **`"screenshot area"`** / **`"crop screenshot"`** | Activates interactive drag-selection crosshair | Custom Crop Rect |
 | **`"screenshot text"`** / **`"copy text"`** | Extracts on-screen text via Vision OCR | Clipboard (as String) |
 | **`"extract text from one"`** / **`"extract text two"`** | Copies text from the numbered window | Clipboard (plain text) |
+| **`"paste"`** | Pastes the current clipboard contents with `⌘V` | Focused app at the text cursor or selection |
 | **`"screenshot in 3 seconds"`** | Waits for 3-second countdown before capture | All Displays |
 | **`"take screenshot"`** / **`"screenshot"`** | Full-screen capture across all monitors | All Displays |
 
@@ -152,6 +155,8 @@ When launched for the first time, macOS will request privacy permissions:
 1. **Microphone Access**: To listen continuously for voice commands.
 2. **Speech Recognition**: For Apple's on-device/system speech-to-text service.
 3. **Screen Recording**: To capture display and window pixels.
+
+When you first say **“paste,”** macOS may ask you to enable VoiceShot in **System Settings > Privacy & Security > Accessibility**. Once enabled, return to the destination app, place the cursor where you want to paste, and say **“paste”** again.
 
 > **Tip**: If prompted or if permissions were previously denied, navigate to:
 > **System Settings > Privacy & Security** ➔ Enable **Microphone**, **Speech Recognition**, and **Screen Recording** for **VoiceShot** (or click *"Open Privacy Settings"* in the VoiceShot Preferences window).
@@ -283,7 +288,14 @@ Set up the Sparkle signing key once. Run the commands below on a Mac with the Gi
 )
 ```
 
-Push a new stable version tag such as `v1.2.0` on the commit you want to release. GitHub Actions publishes the drag-to-Applications disk image for first installs alongside the signed ZIP and feed for Sparkle updates. Local source builds have the update menu disabled until a Sparkle public key is configured. [Sparkle publishing guide](https://sparkle-project.org/documentation/publishing/)
+Push a new stable version tag on the commit you want to release. Add a short user-facing summary to the annotated tag body using a second `-m` argument. VoiceShot shows it under **What’s New** in the update prompt. If the tag body is empty, the release workflow uses up to three recent commit subjects since the previous release.
+
+```bash
+git tag -a v1.5.0 -m "VoiceShot v1.5.0" -m "See a brief summary of each update before installing."
+git push origin v1.5.0
+```
+
+GitHub Actions publishes the drag-to-Applications disk image for first installs alongside the signed ZIP and feed for Sparkle updates. Local source builds have the update menu disabled until a Sparkle public key is configured. [Sparkle publishing guide](https://sparkle-project.org/documentation/publishing/)
 
 ---
 

@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         setupEventHandlers()
+        WindowManager.shared.startMonitoringWindowNumbers()
         updateChecker.start()
         
         // Start speech listening

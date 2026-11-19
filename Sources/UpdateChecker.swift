@@ -60,7 +60,15 @@ private final class VoiceShotUpdateDriver: SPUStandardUserDriver {
 
         let alert = NSAlert()
         alert.messageText = "VoiceShot \(appcastItem.displayVersionString) is available"
-        alert.informativeText = "VoiceShot will download the update and restart when it’s ready."
+        let installMessage = "VoiceShot will download the update and restart when it’s ready."
+        if appcastItem.itemDescriptionFormat == "plain-text",
+           let notes = appcastItem.itemDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !notes.isEmpty {
+            let summary = String(notes.prefix(280)) + (notes.count > 280 ? "…" : "")
+            alert.informativeText = "What’s New\n\(summary)\n\n\(installMessage)"
+        } else {
+            alert.informativeText = installMessage
+        }
         alert.addButton(withTitle: "Update")
         alert.addButton(withTitle: "Later").keyEquivalent = "\u{1b}"
         alert.showsSuppressionButton = true

@@ -92,6 +92,7 @@ struct VoiceShotTests {
             ("extract text two", .extractWindowText(2), "extract text two -> Window 2 OCR"),
             ("extract test from two", .extractWindowText(2), "Transcribed extract test -> Window 2 OCR"),
             ("extract text from window ten", .extractWindowText(10), "extract text from window ten -> Window 10 OCR"),
+            ("paste", .paste, "paste -> Paste Clipboard"),
             ("snap area", .interactiveArea, "snap area -> Selection Area")
         ]
 
@@ -120,6 +121,10 @@ struct VoiceShotTests {
             assertTest(selection.commands(in: phrase, settled: true).map(\.target) == [.showWindowNumbers, .window(3)], phrase)
         }
         let hints = VoiceCommandDictionary.recognitionHints(triggerPhrases: [])
+        assertTest(hints.contains("paste"), "Speech recognition receives the paste hint")
+        for phrase in ["do not paste", "paste it here", "paste in two seconds"] {
+            assertTest(SpeechRecognizer.parseTarget(spoken: phrase) == nil, "Does not send a paste shortcut for: \(phrase)")
+        }
         assertTest(hints.contains("extract text from one") && hints.contains("extract text from ten"),
                    "Speech recognition receives numbered text extraction hints")
         assertTest(SpeechRecognizer.parseTarget(spoken: "extract text from eleven") == nil,
@@ -148,9 +153,9 @@ struct VoiceShotTests {
             var emitted = 0
             for index in 0..<20 {
                 let start = Double(index)
-                _ = stream.beginFreshBadgeUtterance(alias, start: start, end: start + 0.4)
+                _ = stream.beginFreshUtterance(alias, start: start, end: start + 0.4)
                 emitted += stream.commands(in: alias, settled: false).count
-                _ = stream.beginFreshBadgeUtterance(alias, start: start, end: start + 0.5)
+                _ = stream.beginFreshUtterance(alias, start: start, end: start + 0.5)
                 emitted += stream.commands(in: alias, settled: true).count
             }
             assertTest(emitted == 20, "Twenty distinct utterances of \(alias) each trigger once")
@@ -250,6 +255,22 @@ struct VoiceShotTests {
 
         // Exercise the production stream processor with cumulative recognition results.
         var stream = SpeechRecognizer.CommandStream()
+        _ = stream.beginFreshUtterance("paste", start: 0, end: 0.4)
+        assertTest(stream.commands(in: "paste", settled: false).isEmpty && stream.settleInterval == 0.45,
+                   "A partial paste waits briefly for the utterance to settle")
+        assertTest(stream.flush().map(\.target) == [.paste], "The paste command sends one action")
+        assertTest(!stream.beginFreshUtterance("Paste.", start: 0, end: 0.4) &&
+                   stream.commands(in: "Paste.", settled: true).isEmpty, "A revised transcription does not paste twice")
+        assertTest(stream.beginFreshUtterance("Paste.", start: 0.7, end: 1.1) &&
+                   stream.commands(in: "Paste.", settled: true).map(\.target) == [.paste],
+                   "A second spoken paste sends another action")
+        stream = SpeechRecognizer.CommandStream()
+        assertTest(stream.commands(in: "paste screenshot", settled: true).isEmpty,
+                   "A phrase beginning with paste does not trigger paste")
+        assertTest(stream.commands(in: "extract text from two then paste", settled: true)
+                    .map(\.target) == [.extractWindowText(2), .paste],
+                   "An explicitly chained paste follows OCR")
+        stream = SpeechRecognizer.CommandStream()
         assertTest(stream.commands(in: "extract text", settled: false).isEmpty && stream.settleInterval == 0.65,
                    "Bare OCR waits briefly for a window number")
         assertTest(stream.commands(in: "extract text from", settled: false).isEmpty && stream.flush().isEmpty,

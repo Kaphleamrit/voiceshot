@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
 import UserNotifications
@@ -14,6 +15,7 @@ enum CaptureTarget: Equatable, CustomStringConvertible {
     case extractText
     case extractWindowText(Int)
     case showWindowNumbers
+    case paste
     
     var description: String {
         switch self {
@@ -25,6 +27,7 @@ enum CaptureTarget: Equatable, CustomStringConvertible {
         case .extractText: return "Extract Text (OCR)"
         case .extractWindowText(let n): return "Extract Text from Window \(n)"
         case .showWindowNumbers: return "Show Window Numbers"
+        case .paste: return "Paste Clipboard"
         }
     }
 }
@@ -36,6 +39,7 @@ final class ScreenshotManager {
     private let captureQueue = DispatchQueue(label: "com.voiceshot.captureQueue", qos: .userInitiated)
     private var flashWindows: [NSWindow] = []
     private var requestedScreenRecording = false
+    private var requestedPasteAccess = false
     
     private init() {
         requestNotificationPermission()
@@ -114,8 +118,18 @@ final class ScreenshotManager {
         }
     }
     
-    /// Captures a screenshot based on current preferences and target
+    /// Runs the selected capture or clipboard action.
     func captureScreenshot(target: CaptureTarget = .allDisplays, delay: Double? = nil, completion: @escaping (Result<String, Error>) -> Void) {
+        if target == .paste {
+            // Use the capture queue so a preceding screenshot or OCR can finish writing the clipboard.
+            captureQueue.async {
+                DispatchQueue.main.sync {
+                    completion(self.pasteAtFocus())
+                }
+            }
+            return
+        }
+
         // Special case: Action to show visual window number badges
         if target == .showWindowNumbers {
             WindowManager.shared.showWindowBadges()
@@ -184,7 +198,7 @@ final class ScreenshotManager {
             case .extractText:
                 targetLabel = " - OCR Text"
                 targetDetail = "Text Extraction"
-            case .showWindowNumbers:
+            case .showWindowNumbers, .paste:
                 break
             }
             
@@ -234,14 +248,22 @@ final class ScreenshotManager {
             process.standardError = pipe
             
             do {
-                DispatchQueue.main.sync {
+                let capturesOverlays = DispatchQueue.main.sync {
                     self.dismissFlash()
                     switch target {
                     case .window, .app, .extractWindowText:
                         // A window capture excludes overlays. Keep any badges requested since it was queued.
-                        break
+                        return false
                     default:
-                        WindowManager.shared.hideBadgesForCapture()
+                        WindowManager.shared.setAutomaticBadgesPausedForCapture(true)
+                        return true
+                    }
+                }
+                defer {
+                    if capturesOverlays {
+                        DispatchQueue.main.async {
+                            WindowManager.shared.setAutomaticBadgesPausedForCapture(false)
+                        }
                     }
                 }
                 let previousClipboard = capturePath == nil ? NSPasteboard.general.changeCount : nil
@@ -310,6 +332,31 @@ final class ScreenshotManager {
         }
     }
     
+    private func pasteAtFocus() -> Result<String, Error> {
+        guard CGPreflightPostEventAccess() else {
+            if !requestedPasteAccess {
+                requestedPasteAccess = true
+                _ = CGRequestPostEventAccess()
+            }
+            return .failure(NSError(domain: "VoiceShot", code: 5, userInfo: [
+                NSLocalizedDescriptionKey: "Enable VoiceShot in System Settings > Privacy & Security > Accessibility, then say “paste” again."
+            ]))
+        }
+
+        let pasteKey = CGKeyCode(kVK_ANSI_V)
+        guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: pasteKey, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: pasteKey, keyDown: false) else {
+            return .failure(NSError(domain: "VoiceShot", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "Could not send the paste shortcut."
+            ]))
+        }
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cgSessionEventTap)
+        keyUp.post(tap: .cgSessionEventTap)
+        return .success("Paste shortcut sent")
+    }
+
     /// Extracts text from captured image and copies text directly to clipboard
     private func performTextExtraction(from image: NSImage, completion: @escaping (Result<String, Error>) -> Void) {
         let request = VNRecognizeTextRequest()
