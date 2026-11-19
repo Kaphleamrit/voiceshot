@@ -5,6 +5,7 @@ import Speech
 enum SpeechState: Equatable {
     case idle
     case listening
+    case onBreak
     case paused
     case requestingPermission
     case permissionDenied(String)
@@ -13,18 +14,21 @@ enum SpeechState: Equatable {
 
 final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     static let shared = SpeechRecognizer()
+    private static let inactivityInterval: TimeInterval = 15 * 60
+    private static let wakePhrase = "wake up"
 
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
     
-    private(set) var currentState: SpeechState = .idle {
-        didSet {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.onStatusChanged?(self.currentState)
-            }
+    private(set) var currentState: SpeechState = .idle
+
+    private func updateState(_ state: SpeechState) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.currentState != state else { return }
+            self.currentState = state
+            self.onStatusChanged?(state)
         }
     }
     
@@ -35,6 +39,9 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     var onStatusChanged: ((SpeechState) -> Void)?
     
     private var isIntentionallyListening = false
+    private var isOnBreak = false
+    private var permissionRequestID: UUID?
+    private var inactivityWorkItem: DispatchWorkItem?
     private var commandStream = CommandStream()
     private var settleWorkItem: DispatchWorkItem?
     private var lastPartialTranscript: String?
@@ -48,32 +55,28 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     
     // MARK: - Permissions
     
-    func checkPermissions(completion: @escaping (Bool, String?) -> Void) {
+    private func checkPermissions(completion: @escaping (Bool, String?) -> Void) {
         let speechStatus = SFSpeechRecognizer.authorizationStatus()
         
         switch speechStatus {
         case .authorized:
             checkMicrophonePermission(completion: completion)
         case .notDetermined:
-            currentState = .requestingPermission
             SFSpeechRecognizer.requestAuthorization { [weak self] newStatus in
                 DispatchQueue.main.async {
                     if newStatus == .authorized {
                         self?.checkMicrophonePermission(completion: completion)
                     } else {
                         let msg = "Speech Recognition permission was denied. Please enable it in System Settings > Privacy & Security > Speech Recognition."
-                        self?.currentState = .permissionDenied(msg)
                         completion(false, msg)
                     }
                 }
             }
         case .denied, .restricted:
             let msg = "Speech Recognition is disabled. Please enable it in System Settings > Privacy & Security > Speech Recognition."
-            currentState = .permissionDenied(msg)
             completion(false, msg)
         @unknown default:
             let msg = "Unknown speech authorization status."
-            currentState = .error(msg)
             completion(false, msg)
         }
     }
@@ -83,20 +86,18 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         case .authorized:
             completion(true, nil)
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
                 DispatchQueue.main.async {
                     if granted {
                         completion(true, nil)
                     } else {
                         let msg = "Microphone access was denied. Please allow microphone access in System Settings > Privacy & Security > Microphone."
-                        self?.currentState = .permissionDenied(msg)
                         completion(false, msg)
                     }
                 }
             }
         case .denied, .restricted:
             let msg = "Microphone access is denied. Please allow microphone access in System Settings > Privacy & Security > Microphone."
-            currentState = .permissionDenied(msg)
             completion(false, msg)
         @unknown default:
             completion(false, "Unknown microphone authorization status.")
@@ -106,63 +107,116 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     // MARK: - Listening Lifecycle
     
     func startListening() {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            self.isIntentionallyListening = true
-            
-            DispatchQueue.main.async {
-                self.checkPermissions { [weak self] granted, errorMsg in
-                    guard let self = self else { return }
-                    if granted {
-                        self.queue.async {
-                            self.startAudioPipeline()
-                        }
-                    } else {
+        queue.async { [weak self] in self?.startListeningOnQueue() }
+    }
+
+    private func startListeningOnQueue() {
+        guard !isIntentionallyListening else { return }
+        isIntentionallyListening = true
+        let requestID = UUID()
+        permissionRequestID = requestID
+        if SFSpeechRecognizer.authorizationStatus() == .notDetermined ||
+            AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            updateState(.requestingPermission)
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.checkPermissions { [weak self] granted, errorMsg in
+                self?.queue.async { [weak self] in
+                    guard let self, self.permissionRequestID == requestID else { return }
+                    self.permissionRequestID = nil
+                    guard granted else {
                         self.isIntentionallyListening = false
-                        if let errorMsg = errorMsg {
-                            self.currentState = .permissionDenied(errorMsg)
-                        }
+                        self.updateState(.permissionDenied(errorMsg ?? "Listening permission is required."))
+                        return
                     }
+                    self.startAudioPipeline()
+                    self.resetInactivityTimer()
                 }
             }
         }
     }
-    
+
     func stopListening() {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            self.isIntentionallyListening = false
-            self.restartWorkItem?.cancel()
-            self.restartWorkItem = nil
-            self.settleWorkItem?.cancel()
-            self.settleWorkItem = nil
-            
-            self.recognitionRequest?.endAudio()
-            self.recognitionRequest = nil
-            self.recognitionTask?.cancel()
-            self.recognitionTask = nil
-            
-            if self.audioEngine.isRunning {
-                self.audioEngine.stop()
-                self.audioEngine.inputNode.removeTap(onBus: 0)
-            }
-            self.currentState = .paused
-        }
+        queue.async { [weak self] in self?.stopListeningOnQueue() }
     }
-    
+
+    private func stopListeningOnQueue() {
+        isIntentionallyListening = false
+        isOnBreak = false
+        permissionRequestID = nil
+        inactivityWorkItem?.cancel()
+        inactivityWorkItem = nil
+        restartWorkItem?.cancel()
+        restartWorkItem = nil
+        settleWorkItem?.cancel()
+        settleWorkItem = nil
+
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+        recognitionTask?.cancel()
+        recognitionTask = nil
+
+        if audioEngine.isRunning {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
+        updateState(.paused)
+    }
+
     func toggleListening() {
-        if isIntentionallyListening {
-            stopListening()
-        } else {
-            startListening()
+        queue.async { [weak self] in
+            guard let self else { return }
+            if self.isOnBreak {
+                self.resumeFromBreak()
+            } else if self.isIntentionallyListening {
+                self.stopListeningOnQueue()
+            } else {
+                self.startListeningOnQueue()
+            }
         }
     }
-    
+
+    func setAutomaticListeningBreaks(_ enabled: Bool) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            PreferencesManager.shared.automaticListeningBreaks = enabled
+            if self.isOnBreak && !enabled {
+                self.resumeFromBreak()
+            } else {
+                self.resetInactivityTimer()
+            }
+        }
+    }
+
+    private func resetInactivityTimer() {
+        inactivityWorkItem?.cancel()
+        inactivityWorkItem = nil
+        guard isIntentionallyListening, permissionRequestID == nil, !isOnBreak,
+              PreferencesManager.shared.automaticListeningBreaks else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.inactivityWorkItem = nil
+            self.isOnBreak = true
+            self.startAudioPipeline()
+        }
+        inactivityWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + Self.inactivityInterval, execute: workItem)
+    }
+
+    private func resumeFromBreak() {
+        isOnBreak = false
+        startAudioPipeline()
+        resetInactivityTimer()
+    }
+
     // MARK: - Audio Pipeline & Continuous Recognition
     
     private func startAudioPipeline() {
         guard isIntentionallyListening else { return }
-        
+        restartWorkItem?.cancel()
+        restartWorkItem = nil
+
         do {
             if !audioEngine.isRunning {
                 let inputNode = audioEngine.inputNode
@@ -186,6 +240,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                         let rms = sqrt(sum / Float(frameLength))
                         let clamped = min(max(rms * 5.0, 0.0), 1.0)
                         DispatchQueue.main.async {
+                            guard self.currentState == .listening else { return }
                             self.onAudioLevelChanged?(clamped)
                         }
                     }
@@ -196,19 +251,14 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             
             startRecognitionTask()
         } catch {
-            currentState = .error("Audio Engine error: \(error.localizedDescription)")
+            updateState(.error("Audio Engine error: \(error.localizedDescription)"))
             handleSessionEnded()
         }
     }
     
     private func startRecognitionTask() {
         guard isIntentionallyListening else { return }
-        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
-            currentState = .error("Speech Recognizer is unavailable.")
-            handleSessionEnded(retryAfter: 1)
-            return
-        }
-        
+
         recognitionRequest?.endAudio()
         recognitionRequest = nil
         recognitionTask?.cancel()
@@ -216,21 +266,43 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         
         settleWorkItem?.cancel()
         settleWorkItem = nil
-        let triggerPhrases = PreferencesManager.shared.triggerPhrases
-        commandStream = CommandStream(triggerPhrases: triggerPhrases)
-        lastPartialTranscript = nil
-        
+
+        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+            updateState(.error("Speech Recognizer is unavailable."))
+            handleSessionEnded(retryAfter: 1)
+            return
+        }
+
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         if #available(macOS 13.0, *) { request.addsPunctuation = true }
-        request.contextualStrings = VoiceCommandDictionary.recognitionHints(triggerPhrases: triggerPhrases)
+        if isOnBreak {
+            request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+            request.contextualStrings = [Self.wakePhrase]
+        } else {
+            let triggerPhrases = PreferencesManager.shared.triggerPhrases
+            commandStream = CommandStream(triggerPhrases: triggerPhrases)
+            lastPartialTranscript = nil
+            request.contextualStrings = VoiceCommandDictionary.recognitionHints(triggerPhrases: triggerPhrases)
+        }
         self.recognitionRequest = request
         
-        currentState = .listening
+        updateState(isOnBreak ? .onBreak : .listening)
         
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self, weak request] result, error in
             self?.queue.async { [weak self, weak request] in
                 guard let self = self, let request = request, self.recognitionRequest === request else { return }
+
+                if self.isOnBreak {
+                    if let result, Self.containsWakePhrase(Self.separateUtterances(result.bestTranscription)) {
+                        self.resumeFromBreak()
+                    } else if error != nil {
+                        self.handleSessionEnded(retryAfter: 0.3)
+                    } else if result?.isFinal == true {
+                        self.startRecognitionTask()
+                    }
+                    return
+                }
 
                 if let result {
                     let transcription = result.bestTranscription.formattedString
@@ -254,6 +326,13 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                     self.startRecognitionTask()
                 }
             }
+        }
+    }
+
+    static func containsWakePhrase(_ text: String) -> Bool {
+        let wakeWords = VoiceCommandDictionary.words(in: wakePhrase)
+        return text.components(separatedBy: CharacterSet(charactersIn: ".!?\n")).contains {
+            VoiceCommandDictionary.words(in: $0) == wakeWords
         }
     }
 
@@ -426,6 +505,8 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     }
 
     private func emit(_ commands: [Command]) {
+        guard !commands.isEmpty else { return }
+        resetInactivityTimer()
         for command in commands {
             DispatchQueue.main.async { [weak self] in
                 self?.onTriggerDetected?(command.target, command.delay, command.trigger)

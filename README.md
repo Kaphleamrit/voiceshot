@@ -181,6 +181,7 @@ Click the camera icon (`📸`) in the macOS menu bar to access quick controls:
 
 Open the Preferences window (`Cmd + ,`) to customize:
 
+- **Automatic Listening Breaks** are on by default. After 15 minutes without a recognized VoiceShot command, the microphone stays active for “wake up.” Say it on its own or click **Resume Listening** to return to voice commands. Uncheck **Take a listening break after 15 minutes of inactivity** to keep listening for commands continuously.
 - **Save Location**: Change destination to `~/Desktop`, `~/Pictures/Screenshots`, or any custom folder.
 - **Copy to Clipboard**: When local saving is enabled, choose whether to also copy the image.
 - **Floating Preview Thumbnail**: Toggle CleanShot-style floating preview in bottom-right corner (Default: `ON`).

@@ -170,11 +170,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .listening:
             statusMenuItem.title = "Status: Listening 🎙️"
             toggleListeningMenuItem.title = "⏸️ Pause Listening"
-            setMenuBarSymbol(name: "camera.viewfinder")
+        case .onBreak:
+            statusMenuItem.title = "Status: On Break · Say \"wake up\""
+            toggleListeningMenuItem.title = "▶️ Resume Listening"
         case .paused, .idle:
             statusMenuItem.title = "Status: Paused ⏸️"
             toggleListeningMenuItem.title = "▶️ Resume Listening"
-            setMenuBarSymbol(name: "camera.viewfinder", alternateSymbol: "mic.slash")
         case .requestingPermission:
             statusMenuItem.title = "Status: Requesting Permission..."
         case .permissionDenied:
@@ -182,6 +183,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleListeningMenuItem.title = "⚙️ Open Settings..."
         case .error(let msg):
             statusMenuItem.title = "Status: Error (\(msg))"
+        }
+        updateMenuBarSymbol(for: state)
+    }
+
+    private func updateMenuBarSymbol(for state: SpeechState) {
+        switch state {
+        case .onBreak:
+            setMenuBarSymbol(name: "camera.viewfinder", alternateSymbol: "moon")
+        case .paused, .idle:
+            setMenuBarSymbol(name: "camera.viewfinder", alternateSymbol: "mic.slash")
+        default:
+            setMenuBarSymbol(name: "camera.viewfinder")
         }
     }
     
@@ -200,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.image = flashSymbol
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
-            self?.setMenuBarSymbol(name: "camera.viewfinder")
+            self?.updateMenuBarSymbol(for: SpeechRecognizer.shared.currentState)
         }
     }
     

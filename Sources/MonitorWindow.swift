@@ -3,12 +3,13 @@ import Foundation
 
 final class MonitorWindowController: NSWindowController {
     static let shared = MonitorWindowController()
+    private static let commandHint = "Commands: \"snap1\", \"snap2\", \"tags\", \"show numbers\", \"snap Safari\"..."
     
     // UI Elements
     private let statusLabel = NSTextField(labelWithString: "Status: Initializing...")
     private let statusIndicator = NSView()
     private let audioLevelIndicator = NSProgressIndicator()
-    private let transcriptLabel = NSTextField(wrappingLabelWithString: "Commands: \"snap1\", \"snap2\", \"tags\", \"show numbers\", \"snap Safari\"...")
+    private let transcriptLabel = NSTextField(wrappingLabelWithString: MonitorWindowController.commandHint)
     private let lastActionLabel = NSTextField(labelWithString: "Last screenshot: None")
     
     private let toggleListeningButton = NSButton()
@@ -32,6 +33,7 @@ final class MonitorWindowController: NSWindowController {
     private let shutterSoundCheckbox = NSButton(checkboxWithTitle: "Play camera shutter sound", target: nil, action: nil)
     private let flashScreenCheckbox = NSButton(checkboxWithTitle: "Flash screen on capture", target: nil, action: nil)
     private let notificationCheckbox = NSButton(checkboxWithTitle: "Show desktop notification", target: nil, action: nil)
+    private let automaticBreaksCheckbox = NSButton(checkboxWithTitle: "Take a listening break after 15 minutes of inactivity", target: nil, action: nil)
     private let cursorCheckbox = NSButton(checkboxWithTitle: "Include mouse cursor in screenshot", target: nil, action: nil)
     private let delayPopUp = NSPopUpButton()
     
@@ -268,6 +270,10 @@ final class MonitorWindowController: NSWindowController {
         settingsTitle.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         settingsTitle.textColor = .secondaryLabelColor
         mainStack.addArrangedSubview(settingsTitle)
+
+        automaticBreaksCheckbox.target = self
+        automaticBreaksCheckbox.action = #selector(toggleAutomaticBreaks)
+        mainStack.addArrangedSubview(automaticBreaksCheckbox)
         
         saveCheckbox.target = self
         saveCheckbox.action = #selector(toggleSaving)
@@ -365,10 +371,20 @@ final class MonitorWindowController: NSWindowController {
     func handleSpeechState(_ state: SpeechState) {
         switch state {
         case .listening:
+            if transcriptLabel.stringValue.isEmpty {
+                transcriptLabel.stringValue = Self.commandHint
+            }
             statusLabel.stringValue = "Listening for voice commands 🎙️"
             statusLabel.textColor = .labelColor
             updateStatusBadge(isListening: true)
             toggleListeningButton.title = "Pause Listening"
+        case .onBreak:
+            statusLabel.stringValue = "On break. Say \"wake up\" to resume."
+            statusLabel.textColor = .secondaryLabelColor
+            updateStatusBadge(isListening: false)
+            toggleListeningButton.title = "Resume Listening"
+            transcriptLabel.stringValue = ""
+            audioLevelIndicator.doubleValue = 0
         case .paused, .idle:
             statusLabel.stringValue = "Paused"
             statusLabel.textColor = .secondaryLabelColor
@@ -409,6 +425,7 @@ final class MonitorWindowController: NSWindowController {
         shutterSoundCheckbox.state = prefs.playShutterSound ? .on : .off
         flashScreenCheckbox.state = prefs.flashScreen ? .on : .off
         notificationCheckbox.state = prefs.showNotification ? .on : .off
+        automaticBreaksCheckbox.state = prefs.automaticListeningBreaks ? .on : .off
         refreshActiveWindowsList()
     }
     
@@ -421,6 +438,10 @@ final class MonitorWindowController: NSWindowController {
     @objc private func toggleListeningClicked() {
         let speech = SpeechRecognizer.shared
         speech.toggleListening()
+    }
+
+    @objc private func toggleAutomaticBreaks() {
+        SpeechRecognizer.shared.setAutomaticListeningBreaks(automaticBreaksCheckbox.state == .on)
     }
     
     @objc private func testAllClicked() {

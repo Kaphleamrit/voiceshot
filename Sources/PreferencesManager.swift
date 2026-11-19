@@ -17,6 +17,7 @@ final class PreferencesManager {
         static let spokenFeedback = "voiceshot.spokenFeedback"
         static let triggerPhrases = "voiceshot.triggerPhrases"
         static let isListeningEnabled = "voiceshot.isListeningEnabled"
+        static let automaticListeningBreaks = "voiceshot.automaticListeningBreaks"
     }
     
     init(defaults: UserDefaults = .standard) {
@@ -39,7 +40,8 @@ final class PreferencesManager {
             Keys.showFloatingPreview: true,
             Keys.spokenFeedback: false,
             Keys.triggerPhrases: defaultTriggers,
-            Keys.isListeningEnabled: true
+            Keys.isListeningEnabled: true,
+            Keys.automaticListeningBreaks: true
         ])
     }
     
@@ -105,5 +107,10 @@ final class PreferencesManager {
     var isListeningEnabled: Bool {
         get { defaults.bool(forKey: Keys.isListeningEnabled) }
         set { defaults.set(newValue, forKey: Keys.isListeningEnabled) }
+    }
+
+    var automaticListeningBreaks: Bool {
+        get { defaults.bool(forKey: Keys.automaticListeningBreaks) }
+        set { defaults.set(newValue, forKey: Keys.automaticListeningBreaks) }
     }
 }

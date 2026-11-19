@@ -39,9 +39,9 @@
     <key>SURequireSignedFeed</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>VoiceShot needs microphone access to listen for the &quot;take screenshot&quot; voice command.</string>
+    <string>VoiceShot needs microphone access to hear screenshot commands and &quot;wake up&quot; during listening breaks.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>VoiceShot uses speech recognition to detect when you say &quot;take screenshot&quot;.</string>
+    <string>VoiceShot uses speech recognition to detect screenshot commands and &quot;wake up&quot; during listening breaks.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSSupportsAutomaticGraphicsSwitching</key>

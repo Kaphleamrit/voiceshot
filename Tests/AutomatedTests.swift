@@ -33,6 +33,16 @@ struct VoiceShotTests {
         assertTest(PreferencesManager(defaults: isolatedDefaults).saveLocally && !prefs.copyToClipboard, "Save-only opt-in persists")
         prefs.saveLocally = false
         assertTest(prefs.copyToClipboard, "Turning local saving off restores clipboard capture")
+        assertTest(prefs.automaticListeningBreaks, "Automatic listening breaks are enabled by default")
+        prefs.automaticListeningBreaks = false
+        assertTest(!PreferencesManager(defaults: isolatedDefaults).automaticListeningBreaks,
+                   "Disabling automatic breaks persists")
+        assertTest(SpeechRecognizer.containsWakePhrase("Wake up!"), "Wake phrase accepts case and punctuation")
+        assertTest(SpeechRecognizer.containsWakePhrase("Background speech. Wake up."),
+                   "A separate wake utterance can follow other speech")
+        assertTest(!SpeechRecognizer.containsWakePhrase("snap one") &&
+                   !SpeechRecognizer.containsWakePhrase("I wake up early"),
+                   "Capture commands and conversation are ignored during a break")
 
         // TEST 1: Window Number & Snap Tokens Parser
         let testCases: [(spoken: String, expectedTarget: CaptureTarget, desc: String)] = [
