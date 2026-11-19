@@ -464,7 +464,10 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                                canSkipToBadge) else { continue }
                         if command.target == .allDisplays, ["window", "screen", "display"].contains(word),
                            !explicitSeparator { continue }
-                        if command.target == .paste, !explicitSeparator { continue }
+                        if !explicitSeparator,
+                           command.target == .paste || VoiceCommandDictionary.pasteSoundAlikes.contains(word) {
+                            continue
+                        }
                         next = (boundary, command)
                         break
                     }

@@ -121,8 +121,14 @@ struct VoiceShotTests {
             assertTest(selection.commands(in: phrase, settled: true).map(\.target) == [.showWindowNumbers, .window(3)], phrase)
         }
         let hints = VoiceCommandDictionary.recognitionHints(triggerPhrases: [])
-        assertTest(hints.contains("paste"), "Speech recognition receives the paste hint")
-        for phrase in ["do not paste", "paste it here", "paste in two seconds"] {
+        assertTest(hints.contains("paste") && hints.contains("please paste"), "Speech recognition receives paste hints")
+        for phrase in ["Past.", "passed", "paced", "pace", "pest", "piste", "baste", "based",
+                       "taste", "pastes", "paist", "payst", "payste", "pased", "paysed", "payced"] {
+            let command = SpeechRecognizer.parseTarget(spoken: phrase)
+            assertTest(command?.target == .paste && command?.trigger == "paste", "Paste sound-alike: \(phrase)")
+        }
+        for phrase in ["do not paste", "paste it here", "paste in two seconds", "do not baste",
+                       "in the past", "based on this", "taste the soup", "passed in two seconds"] {
             assertTest(SpeechRecognizer.parseTarget(spoken: phrase) == nil, "Does not send a paste shortcut for: \(phrase)")
         }
         assertTest(hints.contains("extract text from one") && hints.contains("extract text from ten"),
@@ -255,21 +261,27 @@ struct VoiceShotTests {
 
         // Exercise the production stream processor with cumulative recognition results.
         var stream = SpeechRecognizer.CommandStream()
-        _ = stream.beginFreshUtterance("paste", start: 0, end: 0.4)
-        assertTest(stream.commands(in: "paste", settled: false).isEmpty && stream.settleInterval == 0.45,
-                   "A partial paste waits briefly for the utterance to settle")
+        _ = stream.beginFreshUtterance("past", start: 0, end: 0.4)
+        assertTest(stream.commands(in: "past", settled: false).isEmpty && stream.settleInterval == 0.45,
+                   "A partial paste sound-alike waits briefly for the utterance to settle")
         assertTest(stream.flush().map(\.target) == [.paste], "The paste command sends one action")
         assertTest(!stream.beginFreshUtterance("Paste.", start: 0, end: 0.4) &&
                    stream.commands(in: "Paste.", settled: true).isEmpty, "A revised transcription does not paste twice")
-        assertTest(stream.beginFreshUtterance("Paste.", start: 0.7, end: 1.1) &&
-                   stream.commands(in: "Paste.", settled: true).map(\.target) == [.paste],
-                   "A second spoken paste sends another action")
+        assertTest(stream.beginFreshUtterance("Paced.", start: 0.7, end: 1.1) &&
+                   stream.commands(in: "Paced.", settled: true).map(\.target) == [.paste],
+                   "A second spoken paste sends another action after a different transcription")
         stream = SpeechRecognizer.CommandStream()
         assertTest(stream.commands(in: "paste screenshot", settled: true).isEmpty,
                    "A phrase beginning with paste does not trigger paste")
         assertTest(stream.commands(in: "extract text from two then paste", settled: true)
                     .map(\.target) == [.extractWindowText(2), .paste],
                    "An explicitly chained paste follows OCR")
+        stream = SpeechRecognizer.CommandStream()
+        assertTest(!stream.commands(in: "snap one past the deadline", settled: true).contains { $0.target == .paste },
+                   "A sound-alike after another command requires a command boundary")
+        assertTest(stream.commands(in: "extract text from two then past", settled: true)
+                    .map(\.target) == [.extractWindowText(2), .paste],
+                   "An explicitly chained paste accepts a sound-alike")
         stream = SpeechRecognizer.CommandStream()
         assertTest(stream.commands(in: "extract text", settled: false).isEmpty && stream.settleInterval == 0.65,
                    "Bare OCR waits briefly for a window number")

@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import Foundation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -8,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboardMenuItem: NSMenuItem!
     private var previewMenuItem: NSMenuItem!
     private var spokenMenuItem: NSMenuItem!
+    private var isShowingPastePermissionAlert = false
     private weak var monitor: MonitorWindowController?
     @MainActor private lazy var updateChecker = UpdateChecker()
     
@@ -147,6 +149,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.monitor?.showCaptureResult(result, target: target)
                     if case .failure(let error) = result {
                         self?.statusItem.button?.toolTip = error.localizedDescription
+                        if case .permissionRequired? = error as? VoicePasteError {
+                            self?.showPastePermissionAlert()
+                        }
                     } else {
                         self?.statusItem.button?.toolTip = "VoiceShot Pro - Voice-Activated Screenshot"
                     }
@@ -163,6 +168,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         speech.onStatusChanged = { [weak self] state in
             self?.updateMenuState(state)
             self?.monitor?.handleSpeechState(state)
+        }
+    }
+
+    private func showPastePermissionAlert() {
+        guard !isShowingPastePermissionAlert else { return }
+        isShowingPastePermissionAlert = true
+        defer { isShowingPastePermissionAlert = false }
+
+        let alert = NSAlert()
+        alert.messageText = "Allow VoiceShot to paste"
+        alert.informativeText = "In Accessibility settings, turn on VoiceShot. Then return to the app where you want to paste and say “paste” again."
+        alert.addButton(withTitle: "Open Accessibility Settings")
+        alert.addButton(withTitle: "Later").keyEquivalent = "\u{1b}"
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        _ = CGRequestPostEventAccess()
+        if let settings = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(settings)
         }
     }
     

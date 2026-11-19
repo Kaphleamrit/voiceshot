@@ -28,6 +28,10 @@ struct VoiceCommandDictionary {
     private static let compactPrefixes = ["snap", "snapp", "snup", "snep", "snaap"]
     private static let seconds: Set<String> = ["second", "seconds", "sec", "secs", "secons", "sekonds"]
     private static let separators = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789").inverted
+    static let pasteSoundAlikes = [
+        "paced", "past", "passed", "pastes", "pace", "pest", "piste",
+        "baste", "based", "taste", "paist", "payst", "payste", "pased", "paysed", "payced"
+    ]
 
     private static let bareBadgeCommands: Set<String> = ["numbers", "nums", "tags", "badges", "labels"]
     private static let shortBadgeCommands = ["nums", "tags", "badges", "labels",
@@ -42,7 +46,7 @@ struct VoiceCommandDictionary {
         }
 
         add(["snap"], target: .allDisplays)
-        add(["paste"], target: .paste)
+        add(["paste"] + pasteSoundAlikes, target: .paste, trigger: "paste")
         add(["show numbers", "show window numbers", "show me numbers", "show me window numbers",
              "show the numbers", "show me the numbers", "show number", "show window number",
              "window numbers", "number the windows", "show windows", "number windows", "numbers"] + shortBadgeCommands,
@@ -197,7 +201,7 @@ struct VoiceCommandDictionary {
 
     static func recognitionHints(triggerPhrases: [String]) -> [String] {
         let commands = ["numbers", "show numbers", "show windows", "snap text", "snap area", "copy text",
-                        "extract text", "screenshot", "paste"] + shortBadgeCommands
+                        "extract text", "screenshot", "paste", "please paste", "paste please"] + shortBadgeCommands
         let numbered = numbers.enumerated().flatMap { index, names in
             ["snap \(index + 1)", "snap\(index + 1)", "snap \(names[0])", "number \(names[0])",
              "extract text from \(names[0])"]

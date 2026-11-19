@@ -32,6 +32,20 @@ enum CaptureTarget: Equatable, CustomStringConvertible {
     }
 }
 
+enum VoicePasteError: LocalizedError {
+    case permissionRequired
+    case shortcutUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .permissionRequired:
+            return "Allow VoiceShot in Accessibility to use voice paste."
+        case .shortcutUnavailable:
+            return "Could not send the paste shortcut."
+        }
+    }
+}
+
 final class ScreenshotManager {
     static let shared = ScreenshotManager()
     
@@ -39,7 +53,6 @@ final class ScreenshotManager {
     private let captureQueue = DispatchQueue(label: "com.voiceshot.captureQueue", qos: .userInitiated)
     private var flashWindows: [NSWindow] = []
     private var requestedScreenRecording = false
-    private var requestedPasteAccess = false
     
     private init() {
         requestNotificationPermission()
@@ -334,21 +347,13 @@ final class ScreenshotManager {
     
     private func pasteAtFocus() -> Result<String, Error> {
         guard CGPreflightPostEventAccess() else {
-            if !requestedPasteAccess {
-                requestedPasteAccess = true
-                _ = CGRequestPostEventAccess()
-            }
-            return .failure(NSError(domain: "VoiceShot", code: 5, userInfo: [
-                NSLocalizedDescriptionKey: "Enable VoiceShot in System Settings > Privacy & Security > Accessibility, then say “paste” again."
-            ]))
+            return .failure(VoicePasteError.permissionRequired)
         }
 
         let pasteKey = CGKeyCode(kVK_ANSI_V)
         guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: pasteKey, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: pasteKey, keyDown: false) else {
-            return .failure(NSError(domain: "VoiceShot", code: 6, userInfo: [
-                NSLocalizedDescriptionKey: "Could not send the paste shortcut."
-            ]))
+            return .failure(VoicePasteError.shortcutUnavailable)
         }
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand

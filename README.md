@@ -114,6 +114,8 @@ Say “snap one” for `snap1`, “snap two” for `snap2`, and so on. If a wind
 
 Say “extract text from” followed by any window number from one to ten to copy just that window’s text. You can omit “from.”
 
+VoiceShot also recognizes common transcriptions of **“paste”** such as “past,” “passed,” “paced,” and “baste” when spoken as commands.
+
 VoiceShot checks recognized phrases against a local command dictionary. It can interpret common sound-alikes such as “snap tree” and small transcription errors such as “snap Safary.” When nearby matches point to different actions, it waits for a clearer command.
 
 ---
@@ -156,7 +158,7 @@ When launched for the first time, macOS will request privacy permissions:
 2. **Speech Recognition**: For Apple's on-device/system speech-to-text service.
 3. **Screen Recording**: To capture display and window pixels.
 
-When you first say **“paste,”** macOS may ask you to enable VoiceShot in **System Settings > Privacy & Security > Accessibility**. Once enabled, return to the destination app, place the cursor where you want to paste, and say **“paste”** again.
+If macOS blocks **“paste,”** VoiceShot offers to open **System Settings > Privacy & Security > Accessibility**. Turn on VoiceShot, then return to the destination app, place the cursor where you want to paste, and say **“paste”** again. If VoiceShot is already listed but macOS still blocks it after an update, turn its Accessibility access off and back on.
 
 > **Tip**: If prompted or if permissions were previously denied, navigate to:
 > **System Settings > Privacy & Security** ➔ Enable **Microphone**, **Speech Recognition**, and **Screen Recording** for **VoiceShot** (or click *"Open Privacy Settings"* in the VoiceShot Preferences window).
