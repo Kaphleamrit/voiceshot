@@ -17,7 +17,8 @@ final class PreferencesManager {
         static let spokenFeedback = "voiceshot.spokenFeedback"
         static let triggerPhrases = "voiceshot.triggerPhrases"
         static let isListeningEnabled = "voiceshot.isListeningEnabled"
-        static let automaticListeningBreaks = "voiceshot.automaticListeningBreaks"
+        // Preserve the opt-out from the previous inactivity setting.
+        static let hideInactiveWindowBadges = "voiceshot.automaticListeningBreaks"
     }
     
     init(defaults: UserDefaults = .standard) {
@@ -41,7 +42,7 @@ final class PreferencesManager {
             Keys.spokenFeedback: false,
             Keys.triggerPhrases: defaultTriggers,
             Keys.isListeningEnabled: true,
-            Keys.automaticListeningBreaks: true
+            Keys.hideInactiveWindowBadges: true
         ])
     }
     
@@ -109,8 +110,8 @@ final class PreferencesManager {
         set { defaults.set(newValue, forKey: Keys.isListeningEnabled) }
     }
 
-    var automaticListeningBreaks: Bool {
-        get { defaults.bool(forKey: Keys.automaticListeningBreaks) }
-        set { defaults.set(newValue, forKey: Keys.automaticListeningBreaks) }
+    var hideInactiveWindowBadges: Bool {
+        get { defaults.bool(forKey: Keys.hideInactiveWindowBadges) }
+        set { defaults.set(newValue, forKey: Keys.hideInactiveWindowBadges) }
     }
 }

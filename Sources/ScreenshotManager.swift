@@ -133,6 +133,15 @@ final class ScreenshotManager {
     
     /// Runs the selected capture or clipboard action.
     func captureScreenshot(target: CaptureTarget = .allDisplays, delay: Double? = nil, completion: @escaping (Result<String, Error>) -> Void) {
+        // Special case: Action to show visual window number badges
+        if target == .showWindowNumbers {
+            WindowManager.shared.showWindowBadges()
+            speakFeedback("Showing window numbers")
+            completion(.success("Window badges displayed"))
+            return
+        }
+
+        WindowManager.shared.recordCommandActivity()
         if target == .paste {
             // Use the capture queue so a preceding screenshot or OCR can finish writing the clipboard.
             captureQueue.async {
@@ -140,14 +149,6 @@ final class ScreenshotManager {
                     completion(self.pasteAtFocus())
                 }
             }
-            return
-        }
-
-        // Special case: Action to show visual window number badges
-        if target == .showWindowNumbers {
-            WindowManager.shared.showWindowBadges()
-            speakFeedback("Showing window numbers")
-            completion(.success("Window badges displayed"))
             return
         }
         

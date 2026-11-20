@@ -33,7 +33,7 @@ final class MonitorWindowController: NSWindowController {
     private let shutterSoundCheckbox = NSButton(checkboxWithTitle: "Play camera shutter sound", target: nil, action: nil)
     private let flashScreenCheckbox = NSButton(checkboxWithTitle: "Flash screen on capture", target: nil, action: nil)
     private let notificationCheckbox = NSButton(checkboxWithTitle: "Show desktop notification", target: nil, action: nil)
-    private let automaticBreaksCheckbox = NSButton(checkboxWithTitle: "Take a listening break after 15 minutes of inactivity", target: nil, action: nil)
+    private let hideInactiveBadgesCheckbox = NSButton(checkboxWithTitle: "Hide window numbers after 15 minutes without a command", target: nil, action: nil)
     private let cursorCheckbox = NSButton(checkboxWithTitle: "Include mouse cursor in screenshot", target: nil, action: nil)
     private let delayPopUp = NSPopUpButton()
     
@@ -271,9 +271,9 @@ final class MonitorWindowController: NSWindowController {
         settingsTitle.textColor = .secondaryLabelColor
         mainStack.addArrangedSubview(settingsTitle)
 
-        automaticBreaksCheckbox.target = self
-        automaticBreaksCheckbox.action = #selector(toggleAutomaticBreaks)
-        mainStack.addArrangedSubview(automaticBreaksCheckbox)
+        hideInactiveBadgesCheckbox.target = self
+        hideInactiveBadgesCheckbox.action = #selector(toggleHideInactiveBadges)
+        mainStack.addArrangedSubview(hideInactiveBadgesCheckbox)
         
         saveCheckbox.target = self
         saveCheckbox.action = #selector(toggleSaving)
@@ -378,13 +378,6 @@ final class MonitorWindowController: NSWindowController {
             statusLabel.textColor = .labelColor
             updateStatusBadge(isListening: true)
             toggleListeningButton.title = "Pause Listening"
-        case .onBreak:
-            statusLabel.stringValue = "On break. Say \"wake up\" to resume."
-            statusLabel.textColor = .secondaryLabelColor
-            updateStatusBadge(isListening: false)
-            toggleListeningButton.title = "Resume Listening"
-            transcriptLabel.stringValue = ""
-            audioLevelIndicator.doubleValue = 0
         case .paused, .idle:
             statusLabel.stringValue = "Paused"
             statusLabel.textColor = .secondaryLabelColor
@@ -425,7 +418,7 @@ final class MonitorWindowController: NSWindowController {
         shutterSoundCheckbox.state = prefs.playShutterSound ? .on : .off
         flashScreenCheckbox.state = prefs.flashScreen ? .on : .off
         notificationCheckbox.state = prefs.showNotification ? .on : .off
-        automaticBreaksCheckbox.state = prefs.automaticListeningBreaks ? .on : .off
+        hideInactiveBadgesCheckbox.state = prefs.hideInactiveWindowBadges ? .on : .off
         refreshActiveWindowsList()
     }
     
@@ -440,8 +433,8 @@ final class MonitorWindowController: NSWindowController {
         speech.toggleListening()
     }
 
-    @objc private func toggleAutomaticBreaks() {
-        SpeechRecognizer.shared.setAutomaticListeningBreaks(automaticBreaksCheckbox.state == .on)
+    @objc private func toggleHideInactiveBadges() {
+        PreferencesManager.shared.hideInactiveWindowBadges = hideInactiveBadgesCheckbox.state == .on
     }
     
     @objc private func testAllClicked() {

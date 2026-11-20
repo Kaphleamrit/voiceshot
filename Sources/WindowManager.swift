@@ -12,12 +12,14 @@ struct WindowItem: Identifiable, Equatable {
 
 final class WindowManager {
     static let shared = WindowManager()
+    private static let badgeInactivityInterval: TimeInterval = 15 * 60
 
     private var badgeWindows: [NSWindow] = []
     private var badgeTimer: Timer?
     private var badgeTargets: [WindowItem] = []
     private var numberingTimer: Timer?
-    private var lastWindowIDs: [CGWindowID] = []
+    private var lastWindowIDs: [CGWindowID]?
+    private var lastCommandTime = ProcessInfo.processInfo.systemUptime
     private var automaticBadgesPaused = false
 
     private init() {}
@@ -107,16 +109,29 @@ final class WindowManager {
 
     func startMonitoringWindowNumbers() {
         guard numberingTimer == nil else { return }
+        recordCommandActivity()
         lastWindowIDs = getVisibleWindows().map(\.id)
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.showBadgesIfNumberingChanged()
+            self?.updateAutomaticBadges()
         }
         timer.tolerance = 0.1
         numberingTimer = timer
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    private func showBadgesIfNumberingChanged() {
+    func recordCommandActivity() {
+        lastCommandTime = ProcessInfo.processInfo.systemUptime
+    }
+
+    private func updateAutomaticBadges() {
+        if PreferencesManager.shared.hideInactiveWindowBadges,
+           ProcessInfo.processInfo.systemUptime - lastCommandTime >= Self.badgeInactivityInterval {
+            guard lastWindowIDs != nil else { return }
+            // Forget the last set so the first command refreshes even unchanged numbers.
+            lastWindowIDs = nil
+            dismissBadges()
+            return
+        }
         guard !automaticBadgesPaused, !hasBadgeTargets else { return }
         let windows = getVisibleWindows()
         let windowIDs = windows.map(\.id)
@@ -129,6 +144,7 @@ final class WindowManager {
 
     /// Places badges on the exposed part of each numbered window.
     func showWindowBadges(duration: TimeInterval = 4.0) {
+        recordCommandActivity()
         dismissBadges()
         let windows = getVisibleWindows()
         lastWindowIDs = windows.map(\.id)

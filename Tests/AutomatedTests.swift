@@ -33,16 +33,12 @@ struct VoiceShotTests {
         assertTest(PreferencesManager(defaults: isolatedDefaults).saveLocally && !prefs.copyToClipboard, "Save-only opt-in persists")
         prefs.saveLocally = false
         assertTest(prefs.copyToClipboard, "Turning local saving off restores clipboard capture")
-        assertTest(prefs.automaticListeningBreaks, "Automatic listening breaks are enabled by default")
-        prefs.automaticListeningBreaks = false
-        assertTest(!PreferencesManager(defaults: isolatedDefaults).automaticListeningBreaks,
-                   "Disabling automatic breaks persists")
-        assertTest(SpeechRecognizer.containsWakePhrase("Wake up!"), "Wake phrase accepts case and punctuation")
-        assertTest(SpeechRecognizer.containsWakePhrase("Background speech. Wake up."),
-                   "A separate wake utterance can follow other speech")
-        assertTest(!SpeechRecognizer.containsWakePhrase("snap one") &&
-                   !SpeechRecognizer.containsWakePhrase("I wake up early"),
-                   "Capture commands and conversation are ignored during a break")
+        assertTest(prefs.hideInactiveWindowBadges, "Window badges hide after inactivity by default")
+        isolatedDefaults.set(false, forKey: "voiceshot.automaticListeningBreaks")
+        assertTest(!prefs.hideInactiveWindowBadges, "The previous inactivity opt-out carries over")
+        prefs.hideInactiveWindowBadges = true
+        assertTest(PreferencesManager(defaults: isolatedDefaults).hideInactiveWindowBadges,
+                   "The window badge inactivity preference persists")
 
         // TEST 1: Window Number & Snap Tokens Parser
         let testCases: [(spoken: String, expectedTarget: CaptureTarget, desc: String)] = [
@@ -205,14 +201,35 @@ struct VoiceShotTests {
             ("snap Safary", .app("safari")), ("screenshot Safrai", .app("safari")),
             ("screenshoot Text", .extractText), ("snap aera", .interactiveArea),
             ("show numbrs", .showWindowNumbers), ("display tree", .display(3)),
-            ("take screenshoot", .allDisplays)
+            ("take screenshoot", .allDisplays),
+            ("snack wan", .window(1)), ("snepp tew", .window(2)), ("snagfree", .window(3)),
+            ("snaep fohr", .window(4)), ("capchure windoh faiv", .window(5)),
+            ("snak siks", .window(6)), ("screenshot sevin", .window(7)),
+            ("screenshut eyt", .window(8)), ("snap nain", .window(9)), ("snacktehn", .window(10)),
+            ("snap windoe two", .window(2)), ("snap moniter tew", .display(2)),
+            ("would you please snack tew", .window(2)),
+            ("capchure displey free", .display(3)), ("take a screen capture", .allDisplays),
+            ("take a screen shut", .allDisplays), ("capture all screens", .allDisplays),
+            ("snack aeria", .interactiveArea), ("crop screenshort", .interactiveArea),
+            ("capture selection", .interactiveArea), ("extrakt tekst", .extractText),
+            ("xtract tekst from windoh sevn", .extractWindowText(7)),
+            ("copy txt from windoh tew", .extractWindowText(2)),
+            ("read tex from free", .extractWindowText(3)),
+            ("snag saphari", .app("safari")), ("screenshot fire fox", .app("firefox")),
+            ("capture Google Chrome", .app("chrome")), ("snap Visual Studio Code", .app("code")),
+            ("tagz", .showWindowNumbers), ("badjes", .showWindowNumbers), ("nummz", .showWindowNumbers),
+            ("shoh me the windos", .showWindowNumbers), ("shew window numz", .showWindowNumbers),
+            ("show lay bills", .showWindowNumbers), ("show the batches", .showWindowNumbers),
+            ("sho tax", .showWindowNumbers), ("paeste", .paste), ("peyst from clipboard", .paste)
         ]
         for (spoken, target) in pronunciationCases {
             assertTest(SpeechRecognizer.parseTarget(spoken: spoken)?.target == target,
                        "Pronunciation match: \(spoken) -> \(target)")
         }
         for spoken in ["snap to it", "the snap tree fell", "snap something", "snup", "display eleven",
-                       "screenshot unknown", "take a screenshot of the report"] {
+                       "screenshot unknown", "take a screenshot of the report", "snack", "snag",
+                       "free", "tax", "batches", "numbs", "lay bills", "snack free samples",
+                       "extract text from windoh 11", "copy txt from monitor two", "paste the clipboard in tew sekunds"] {
             assertTest(SpeechRecognizer.parseTarget(spoken: spoken) == nil, "Unclear phrase is ignored: \(spoken)")
         }
         assertTest(SpeechRecognizer.parseTarget(spoken: "grab the frmae", triggerPhrases: ["grab the frame"])?.target
@@ -221,6 +238,31 @@ struct VoiceShotTests {
                    "Conflicting nearby commands are ignored")
         assertTest(SpeechRecognizer.parseTarget(spoken: "snap area", triggerPhrases: ["snap aera"])?.target
                    == .interactiveArea, "An exact command wins over a nearby custom trigger")
+        let newCountdown = SpeechRecognizer.parseTarget(spoken: "snack free in sevn sekunds")
+        assertTest(newCountdown?.target == .window(3) && newCountdown?.delay == 7,
+                   "Several sound-alikes work in a single countdown command")
+        var aliases = SpeechRecognizer.CommandStream()
+        assertTest(aliases.commands(in: "we were talking sho tagz then snack tew then xtract tekst", settled: true)
+                    .map(\.target) == [.showWindowNumbers, .window(2), .extractText],
+                   "New aliases work after chatter and in a multi-command transcript")
+        aliases = SpeechRecognizer.CommandStream()
+        assertTest(aliases.commands(in: "nummz free", settled: true).map(\.target) == [.showWindowNumbers, .window(3)],
+                   "Sound-alike badge and number commands can be spoken together")
+        aliases = SpeechRecognizer.CommandStream()
+        assertTest(aliases.commands(in: "the tax bill. those batches are ready. snack free samples.", settled: true).isEmpty,
+                   "Ordinary sentences using command sound-alikes are ignored")
+        aliases = SpeechRecognizer.CommandStream()
+        assertTest(aliases.commands(in: "show tax", settled: false).isEmpty && aliases.settleInterval == 0.45 &&
+                   aliases.commands(in: "show tax returns", settled: true).isEmpty && aliases.flush().isEmpty,
+                   "A partial badge sound-alike can resolve to ordinary speech")
+        aliases = SpeechRecognizer.CommandStream()
+        _ = aliases.beginFreshUtterance("snack tew", start: 0, end: 0.4)
+        assertTest(aliases.commands(in: "snack tew", settled: true).map(\.target) == [.window(2)] &&
+                   !aliases.beginFreshUtterance("snap two", start: 0, end: 0.5) &&
+                   aliases.commands(in: "snap two", settled: true).isEmpty &&
+                   aliases.beginFreshUtterance("snap two", start: 0.8, end: 1.2) &&
+                   aliases.commands(in: "snap two", settled: true).map(\.target) == [.window(2)],
+                   "An audio rewrite stays deduplicated and a fresh repeated snap runs")
 
         // TEST 2: Window Manager Numbering
         let windows = WindowManager.shared.getVisibleWindows()

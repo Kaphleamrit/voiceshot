@@ -195,9 +195,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .listening:
             statusMenuItem.title = "Status: Listening 🎙️"
             toggleListeningMenuItem.title = "⏸️ Pause Listening"
-        case .onBreak:
-            statusMenuItem.title = "Status: On Break · Say \"wake up\""
-            toggleListeningMenuItem.title = "▶️ Resume Listening"
         case .paused, .idle:
             statusMenuItem.title = "Status: Paused ⏸️"
             toggleListeningMenuItem.title = "▶️ Resume Listening"
@@ -214,8 +211,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateMenuBarSymbol(for state: SpeechState) {
         switch state {
-        case .onBreak:
-            setMenuBarSymbol(name: "camera.viewfinder", alternateSymbol: "moon")
         case .paused, .idle:
             setMenuBarSymbol(name: "camera.viewfinder", alternateSymbol: "mic.slash")
         default:

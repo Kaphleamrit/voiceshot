@@ -5,7 +5,6 @@ import Speech
 enum SpeechState: Equatable {
     case idle
     case listening
-    case onBreak
     case paused
     case requestingPermission
     case permissionDenied(String)
@@ -14,8 +13,6 @@ enum SpeechState: Equatable {
 
 final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     static let shared = SpeechRecognizer()
-    private static let inactivityInterval: TimeInterval = 15 * 60
-    private static let wakePhrase = "wake up"
 
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -39,9 +36,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     var onStatusChanged: ((SpeechState) -> Void)?
     
     private var isIntentionallyListening = false
-    private var isOnBreak = false
     private var permissionRequestID: UUID?
-    private var inactivityWorkItem: DispatchWorkItem?
     private var commandStream = CommandStream()
     private var settleWorkItem: DispatchWorkItem?
     private var lastPartialTranscript: String?
@@ -130,7 +125,6 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                         return
                     }
                     self.startAudioPipeline()
-                    self.resetInactivityTimer()
                 }
             }
         }
@@ -142,10 +136,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
 
     private func stopListeningOnQueue() {
         isIntentionallyListening = false
-        isOnBreak = false
         permissionRequestID = nil
-        inactivityWorkItem?.cancel()
-        inactivityWorkItem = nil
         restartWorkItem?.cancel()
         restartWorkItem = nil
         settleWorkItem?.cancel()
@@ -166,48 +157,12 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
     func toggleListening() {
         queue.async { [weak self] in
             guard let self else { return }
-            if self.isOnBreak {
-                self.resumeFromBreak()
-            } else if self.isIntentionallyListening {
+            if self.isIntentionallyListening {
                 self.stopListeningOnQueue()
             } else {
                 self.startListeningOnQueue()
             }
         }
-    }
-
-    func setAutomaticListeningBreaks(_ enabled: Bool) {
-        queue.async { [weak self] in
-            guard let self else { return }
-            PreferencesManager.shared.automaticListeningBreaks = enabled
-            if self.isOnBreak && !enabled {
-                self.resumeFromBreak()
-            } else {
-                self.resetInactivityTimer()
-            }
-        }
-    }
-
-    private func resetInactivityTimer() {
-        inactivityWorkItem?.cancel()
-        inactivityWorkItem = nil
-        guard isIntentionallyListening, permissionRequestID == nil, !isOnBreak,
-              PreferencesManager.shared.automaticListeningBreaks else { return }
-
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.inactivityWorkItem = nil
-            self.isOnBreak = true
-            self.startAudioPipeline()
-        }
-        inactivityWorkItem = workItem
-        queue.asyncAfter(deadline: .now() + Self.inactivityInterval, execute: workItem)
-    }
-
-    private func resumeFromBreak() {
-        isOnBreak = false
-        startAudioPipeline()
-        resetInactivityTimer()
     }
 
     // MARK: - Audio Pipeline & Continuous Recognition
@@ -276,33 +231,17 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         if #available(macOS 13.0, *) { request.addsPunctuation = true }
-        if isOnBreak {
-            request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-            request.contextualStrings = [Self.wakePhrase]
-        } else {
-            let triggerPhrases = PreferencesManager.shared.triggerPhrases
-            commandStream = CommandStream(triggerPhrases: triggerPhrases)
-            lastPartialTranscript = nil
-            request.contextualStrings = VoiceCommandDictionary.recognitionHints(triggerPhrases: triggerPhrases)
-        }
+        let triggerPhrases = PreferencesManager.shared.triggerPhrases
+        commandStream = CommandStream(triggerPhrases: triggerPhrases)
+        lastPartialTranscript = nil
+        request.contextualStrings = VoiceCommandDictionary.recognitionHints(triggerPhrases: triggerPhrases)
         self.recognitionRequest = request
-        
-        updateState(isOnBreak ? .onBreak : .listening)
-        
+
+        updateState(.listening)
+
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self, weak request] result, error in
             self?.queue.async { [weak self, weak request] in
                 guard let self = self, let request = request, self.recognitionRequest === request else { return }
-
-                if self.isOnBreak {
-                    if let result, Self.containsWakePhrase(Self.separateUtterances(result.bestTranscription)) {
-                        self.resumeFromBreak()
-                    } else if error != nil {
-                        self.handleSessionEnded(retryAfter: 0.3)
-                    } else if result?.isFinal == true {
-                        self.startRecognitionTask()
-                    }
-                    return
-                }
 
                 if let result {
                     let transcription = result.bestTranscription.formattedString
@@ -326,13 +265,6 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                     self.startRecognitionTask()
                 }
             }
-        }
-    }
-
-    static func containsWakePhrase(_ text: String) -> Bool {
-        let wakeWords = VoiceCommandDictionary.words(in: wakePhrase)
-        return text.components(separatedBy: CharacterSet(charactersIn: ".!?\n")).contains {
-            VoiceCommandDictionary.words(in: $0) == wakeWords
         }
     }
 
@@ -387,8 +319,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             let previousEnd = lastAudioEnd
             lastAudioEnd = max(lastAudioEnd ?? end, end)
             guard let previousEnd, start >= previousEnd,
-                  let target = dictionary.match(VoiceCommandDictionary.words(in: text)[...])?.target,
-                  target == .showWindowNumbers || target == .paste else {
+                  dictionary.match(VoiceCommandDictionary.words(in: text)[...]) != nil else {
                 return false
             }
             processedWordCount = 0
@@ -406,6 +337,7 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
             case .allDisplays: return 0.25
             case .paste: return 0.45
             case .extractText: return 0.65
+            case .showWindowNumbers: return 0.45
             default: return 0.10
             }
         }
@@ -433,7 +365,9 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                 if let command = dictionary.match(phrase) ?? (selectingBadge ? VoiceCommandDictionary.badgeSelection(phrase) : nil) {
                     pending = command
                     pendingWordCount = phraseEnd
-                    if settled || phraseEnd < words.count || command.target == .showWindowNumbers ||
+                    let showBadgesImmediately = command.target == .showWindowNumbers &&
+                        !VoiceCommandDictionary.isBadgeSoundAlike(phrase)
+                    if settled || phraseEnd < words.count || showBadgesImmediately ||
                         (command.delay > 0 && VoiceCommandDictionary.endsWithSeconds(phrase.last)) {
                         if command.target == .showWindowNumbers { selectingBadge = true }
                         commands.append(contentsOf: flush())
@@ -455,14 +389,14 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
                         guard let command = dictionary.match(words[start..<boundary]) ??
                                 (selectingBadge ? VoiceCommandDictionary.badgeSelection(words[start..<boundary]) : nil) else { continue }
                         let badgeFollowsChatter = badgeAfterChatter.map { $0 >= boundary } == true
-                        let numberedSnap = words[start] == "snap" && command.trigger.hasPrefix("snap") &&
+                        let numberedSnap = VoiceCommandDictionary.isSnapWord(words[start]) && command.trigger.hasPrefix("snap") &&
                             Int(command.trigger.dropFirst(4)) != nil
                         let canSkipToBadge = badgeFollowsChatter && (command.target == .showWindowNumbers || numberedSnap)
                         guard canSkipToBadge || explicitSeparator || dictionary.canStartCommand(word) || VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil,
                               (dictionary.hasCommandPrefix(words[boundary..<phraseEnd]) ||
                                (command.target == .showWindowNumbers && VoiceCommandDictionary.badgeSelection(words[boundary..<phraseEnd]) != nil) ||
                                canSkipToBadge) else { continue }
-                        if command.target == .allDisplays, ["window", "screen", "display"].contains(word),
+                        if command.target == .allDisplays, ["window", "screen", "display", "monitor"].contains(word),
                            !explicitSeparator { continue }
                         if !explicitSeparator,
                            command.target == .paste || VoiceCommandDictionary.pasteSoundAlikes.contains(word) {
@@ -517,7 +451,6 @@ final class SpeechRecognizer: NSObject, SFSpeechRecognizerDelegate {
 
     private func emit(_ commands: [Command]) {
         guard !commands.isEmpty else { return }
-        resetInactivityTimer()
         for command in commands {
             DispatchQueue.main.async { [weak self] in
                 self?.onTriggerDetected?(command.target, command.delay, command.trigger)

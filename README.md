@@ -81,7 +81,7 @@ VoiceShot numbers application windows from front to back across connected displa
 
 ### Visual Window Badges
 
-VoiceShot briefly shows the current window numbers whenever their assignments change.
+VoiceShot briefly shows the current window numbers when their assignments change. After 15 minutes without a command, the numbers stay hidden until the next command.
 
 Say **“tags,” “nums,” “badges,”** or **“labels”** to show window numbers. Each also works with “show,” as in **“show tags.”** You can still say **“show numbers”** or press `Cmd + Shift + N`.
 
@@ -116,7 +116,7 @@ Say “extract text from” followed by any window number from one to ten to cop
 
 VoiceShot also recognizes common transcriptions of **“paste”** such as “past,” “passed,” “paced,” and “baste” when spoken as commands.
 
-VoiceShot checks recognized phrases against a local command dictionary. It can interpret common sound-alikes such as “snap tree” and small transcription errors such as “snap Safary.” When nearby matches point to different actions, it waits for a clearer command.
+VoiceShot checks recognized phrases against a local command dictionary. It can interpret transcriptions such as “snack too” for “snap two,” “show tagz” for “show tags,” and “extrakt tekst” for “extract text.” Natural variations such as “capture window two,” “capture display one,” and “read text from window three” also work. When nearby matches point to different actions, it waits for a clearer command.
 
 ---
 
@@ -191,7 +191,7 @@ Click the camera icon (`📸`) in the macOS menu bar to access quick controls:
 
 Open the Preferences window (`Cmd + ,`) to customize:
 
-- **Automatic Listening Breaks** are on by default. After 15 minutes without a recognized VoiceShot command, the microphone stays active for “wake up.” Say it on its own or click **Resume Listening** to return to voice commands. Uncheck **Take a listening break after 15 minutes of inactivity** to keep listening for commands continuously.
+- **Hide window numbers after 15 minutes without a command** is enabled by default. Window numbers stay hidden until the next VoiceShot command. Voice commands such as “snap one,” “snap two,” and “nums” work throughout.
 - **Save Location**: Change destination to `~/Desktop`, `~/Pictures/Screenshots`, or any custom folder.
 - **Copy to Clipboard**: When local saving is enabled, choose whether to also copy the image.
 - **Floating Preview Thumbnail**: Toggle CleanShot-style floating preview in bottom-right corner (Default: `ON`).
